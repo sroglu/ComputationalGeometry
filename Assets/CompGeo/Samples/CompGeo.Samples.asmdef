@@ -1,0 +1,21 @@
+{
+    "name": "CompGeo.Samples",
+    "rootNamespace": "CompGeo.Samples",
+    "references": [
+        "CompGeo.Core",
+        "CompGeo.Collections",
+        "CompGeo.MeshProcessing",
+        "CompGeo.Visualization",
+        "Unity.Mathematics",
+        "Unity.Collections"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,26 @@
+{
+    "name": "CompGeo.Tests",
+    "rootNamespace": "CompGeo.Tests",
+    "references": [
+        "CompGeo.Core",
+        "CompGeo.Collections",
+        "CompGeo.MeshProcessing",
+        "Unity.Mathematics",
+        "Unity.Collections",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

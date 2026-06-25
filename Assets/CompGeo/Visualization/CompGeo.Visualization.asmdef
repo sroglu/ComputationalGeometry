@@ -1,0 +1,20 @@
+{
+    "name": "CompGeo.Visualization",
+    "rootNamespace": "CompGeo.Visualization",
+    "references": [
+        "CompGeo.Core",
+        "CompGeo.Collections",
+        "CompGeo.MeshProcessing",
+        "Unity.Mathematics",
+        "Unity.Collections"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

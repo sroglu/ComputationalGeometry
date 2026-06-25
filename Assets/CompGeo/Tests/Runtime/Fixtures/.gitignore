@@ -1,0 +1,6 @@
+# Instructor-provided CENG789 ground-truth data is all-rights-reserved course material:
+# keep it LOCAL, never commit it (mirrors docs/MIGRATION.md "do not push").
+# Track only the README and this .gitignore.
+*
+!.gitignore
+!README.md
