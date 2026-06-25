@@ -20,13 +20,15 @@ namespace CompGeo.Samples
     public sealed class UnfoldDemo : MonoBehaviour
     {
         [Header("Procedural disk surface")]
-        [Min(2)] public int gridSize = 28;
-        public float spacing = 0.08f;
-        public float heightAmplitude = 0.35f;
+        [Min(2)] public int gridSize = 48;
+        public float spacing = 0.045f;
+        public float heightAmplitude = 0.25f;
 
         [Header("Unfold morph")]
         [Min(0.1f)] public float morphPeriod = 4f;
-        [Min(1)] public int checkerFrequency = 24;
+        // Keep well below gridSize (≈ 4 vertices per checker cell) so the per-vertex checker
+        // is properly sampled — a frequency near the vertex resolution aliases into coarse blobs.
+        [Min(1)] public int checkerFrequency = 12;
         public Color checkerA = new Color(0.95f, 0.95f, 0.95f, 1f);
         public Color checkerB = new Color(0.15f, 0.35f, 0.85f, 1f);
 
@@ -39,7 +41,8 @@ namespace CompGeo.Samples
         void Start()
         {
             _mesh = BuildGrid(gridSize, spacing, heightAmplitude);
-            _view = new MeshGpuView { ShowSurface = true };
+            // Clean filled-surface look: solid checker triangles only, no point/wireframe overlay.
+            _view = new MeshGpuView { ShowSurface = true, ShowPoints = false, ShowEdges = false };
             _view.Build(_mesh);
 
             var uv = TutteEmbedding.Compute(_mesh, Allocator.Persistent);

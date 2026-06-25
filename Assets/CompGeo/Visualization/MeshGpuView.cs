@@ -36,6 +36,12 @@ namespace CompGeo.Visualization
         /// </summary>
         public bool ShowSurface;
 
+        /// <summary>Draw the 1px point cloud (default true). Turn off for a clean surface-only view.</summary>
+        public bool ShowPoints = true;
+
+        /// <summary>Draw the wireframe edges (default true). Turn off for a clean surface-only view.</summary>
+        public bool ShowEdges = true;
+
         public MeshGpuView()
         {
             Shader shader = Shader.Find(ShaderName);
@@ -167,8 +173,8 @@ namespace CompGeo.Visualization
                 receiveShadows = false,
             };
             if (ShowSurface && _surfaceMesh != null) Graphics.RenderMesh(rp, _surfaceMesh, 0, objectToWorld);
-            if (_pointsMesh != null) Graphics.RenderMesh(rp, _pointsMesh, 0, objectToWorld);
-            if (_edgesMesh != null) Graphics.RenderMesh(rp, _edgesMesh, 0, objectToWorld);
+            if (ShowPoints && _pointsMesh != null) Graphics.RenderMesh(rp, _pointsMesh, 0, objectToWorld);
+            if (ShowEdges && _edgesMesh != null) Graphics.RenderMesh(rp, _edgesMesh, 0, objectToWorld);
             if (_pathMesh != null) Graphics.RenderMesh(rp, _pathMesh, 0, objectToWorld);
         }
 
