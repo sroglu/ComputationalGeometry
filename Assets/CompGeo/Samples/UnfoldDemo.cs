@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using System.IO;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 using CompGeo.Core;
+using CompGeo.Core.IO;
 using CompGeo.MeshProcessing.Parameterization;
 using CompGeo.Visualization;
 
@@ -24,7 +26,12 @@ namespace CompGeo.Samples
     /// </summary>
     public sealed class UnfoldDemo : MonoBehaviour
     {
-        [Header("Procedural disk surface")]
+        [Header("Source mesh")]
+        [Tooltip("Absolute path to a disk-topology (open / single-boundary) .off mesh. " +
+                 "If empty or missing, the procedural grid below is used instead.")]
+        public string meshOffPath = "";
+
+        [Header("Procedural disk surface (fallback)")]
         [Min(2)] public int gridSize = 48;
         public float spacing = 0.045f;
         public float heightAmplitude = 0.25f;
@@ -51,8 +58,7 @@ namespace CompGeo.Samples
 
         void Start()
         {
-            BuildGridData(gridSize, spacing, heightAmplitude, out var positions, out var triangles);
-            _mesh = MeshBuilder.Build(positions, triangles, Allocator.Persistent);
+            _mesh = LoadOrBuildMesh();
 
             var uv = TutteEmbedding.Compute(_mesh, Allocator.Persistent);
 
@@ -143,6 +149,48 @@ namespace CompGeo.Samples
             if (_flat.IsCreated) _flat.Dispose();
             if (_morph.IsCreated) _morph.Dispose();
             _mesh.Dispose();
+        }
+
+        MeshData LoadOrBuildMesh()
+        {
+            if (!string.IsNullOrEmpty(meshOffPath) && File.Exists(meshOffPath))
+            {
+                var loaded = OffReader.ReadFile(meshOffPath, Allocator.Persistent);
+                NormalizeAndOrient(ref loaded);
+                return loaded;
+            }
+
+            BuildGridData(gridSize, spacing, heightAmplitude, out var positions, out var triangles);
+            return MeshBuilder.Build(positions, triangles, Allocator.Persistent);
+        }
+
+        /// <summary>
+        /// Lay an arbitrary loaded mesh down for the demo: rotate its dominant (area-weighted) face normal
+        /// to +Y so relief runs vertically (like the procedural grid), then centre it on the origin and
+        /// uniformly scale it to fit ~2 units. Topology/indices are untouched.
+        /// </summary>
+        static void NormalizeAndOrient(ref MeshData m)
+        {
+            int n = m.VertexCount;
+
+            float3 nrm = float3.zero;
+            for (int t = 0; t < m.TriangleCount; t++)
+            {
+                int3 tri = m.Triangles[t];
+                nrm += math.cross(m.Positions[tri.y] - m.Positions[tri.x], m.Positions[tri.z] - m.Positions[tri.x]);
+            }
+            if (math.length(nrm) > 1e-9f)
+            {
+                Quaternion q = Quaternion.FromToRotation((Vector3)math.normalize(nrm), Vector3.up);
+                for (int i = 0; i < n; i++) m.Positions[i] = (float3)(q * (Vector3)(float3)m.Positions[i]);
+            }
+
+            float3 mn = m.Positions[0], mx = m.Positions[0];
+            for (int i = 1; i < n; i++) { mn = math.min(mn, m.Positions[i]); mx = math.max(mx, m.Positions[i]); }
+            float3 centre = (mn + mx) * 0.5f;
+            float maxExtent = math.cmax(mx - mn);
+            float scale = maxExtent > 1e-9f ? 2f / maxExtent : 1f;
+            for (int i = 0; i < n; i++) m.Positions[i] = (m.Positions[i] - centre) * scale;
         }
 
         static void BuildGridData(int m, float spacing, float amp, out List<float3> positions, out List<int3> triangles)
