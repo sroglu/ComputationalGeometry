@@ -22,6 +22,7 @@ namespace CompGeo.Visualization
         const string ShaderName = "CompGeo/VertexColorUnlit";
 
         readonly Material _material;
+        Material _surfaceMaterialOverride; // optional, externally owned (e.g. the UV-checker material)
         Mesh _pointsMesh;
         Mesh _edgesMesh;
         Mesh _surfaceMesh;
@@ -140,6 +141,16 @@ namespace CompGeo.Visualization
             _surfaceMesh.SetColors(colors);
         }
 
+        /// <summary>
+        /// Override the material used for the filled surface (e.g. a UV-checker shader that paints a crisp,
+        /// tessellation-independent pattern). Pass <c>null</c> to fall back to the per-vertex-colour
+        /// material. The override is owned by the caller, not disposed here.
+        /// </summary>
+        public void SetSurfaceMaterial(Material material) => _surfaceMaterialOverride = material;
+
+        /// <summary>Set the surface mesh's UV0 channel (length must equal the vertex count).</summary>
+        public void SetSurfaceUVs(NativeArray<float2> uv) => _surfaceMesh.SetUVs(0, uv.Reinterpret<Vector2>());
+
         /// <summary>Build/replace the highlighted path from a vertex sequence (e.g. a reconstructed shortest path).</summary>
         public void SetPath(in MeshData mesh, NativeArray<int> path, Color color)
         {
@@ -173,7 +184,17 @@ namespace CompGeo.Visualization
                 shadowCastingMode = ShadowCastingMode.Off,
                 receiveShadows = false,
             };
-            if (ShowSurface && _surfaceMesh != null) Graphics.RenderMesh(rp, _surfaceMesh, 0, objectToWorld);
+            if (ShowSurface && _surfaceMesh != null)
+            {
+                Material surfaceMat = _surfaceMaterialOverride != null ? _surfaceMaterialOverride : _material;
+                var rpSurface = new RenderParams(surfaceMat)
+                {
+                    worldBounds = _bounds,
+                    shadowCastingMode = ShadowCastingMode.Off,
+                    receiveShadows = false,
+                };
+                Graphics.RenderMesh(rpSurface, _surfaceMesh, 0, objectToWorld);
+            }
             if (ShowPoints && _pointsMesh != null) Graphics.RenderMesh(rp, _pointsMesh, 0, objectToWorld);
             if (ShowEdges && _edgesMesh != null) Graphics.RenderMesh(rp, _edgesMesh, 0, objectToWorld);
             if (_pathMesh != null) Graphics.RenderMesh(rp, _pathMesh, 0, objectToWorld);

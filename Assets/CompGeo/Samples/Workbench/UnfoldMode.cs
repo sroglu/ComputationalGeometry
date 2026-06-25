@@ -25,14 +25,21 @@ namespace CompGeo.Samples
         public bool morphing = true;
 
         Workbench _wb;
+        Material _checkerMat;
         NativeArray<float3> _surface;
         NativeArray<float3> _flat;
         NativeArray<float3> _morph;
         bool _ready;
 
-        void Awake() => _wb = GetComponent<Workbench>();
+        void Awake()
+        {
+            _wb = GetComponent<Workbench>();
+            _checkerMat = new Material(Shader.Find("CompGeo/UvCheckerUnlit"));
+        }
+
         void OnEnable() => _wb.MeshChanged += OnMeshChanged;
         void OnDisable() { _wb.MeshChanged -= OnMeshChanged; Free(); }
+        void OnDestroy() { if (_checkerMat != null) Destroy(_checkerMat); }
 
         public void SetMorphing(bool on) => morphing = on;
         public void ToggleMorphing() => morphing = !morphing;
@@ -75,15 +82,19 @@ namespace CompGeo.Samples
             }
             float m00 = a / den, m01 = -b / den, m10 = b / den, m11 = a / den;
 
-            var colors = new NativeArray<Color>(n, Allocator.Temp);
             for (int i = 0; i < n; i++)
             {
                 float2 p = uv[i] - meanP;
                 _flat[i] = new float3(m00 * p.x + m01 * p.y + meanQ.x, 0f, m10 * p.x + m11 * p.y + meanQ.y);
-                colors[i] = Checker(uv[i]);
             }
-            _wb.View.SetColors(colors);
-            colors.Dispose();
+
+            // Paint the checker per-pixel from the UV in the shader (crisp, tessellation-independent),
+            // instead of per-vertex colours which blur/alias on coarse or irregular meshes.
+            _checkerMat.SetColor("_ColorA", checkerA);
+            _checkerMat.SetColor("_ColorB", checkerB);
+            _checkerMat.SetFloat("_Frequency", checkerFrequency);
+            _wb.View.SetSurfaceUVs(uv);
+            _wb.View.SetSurfaceMaterial(_checkerMat);
             uv.Dispose();
 
             _ready = true;
@@ -101,13 +112,6 @@ namespace CompGeo.Samples
         {
             for (int i = 0; i < _morph.Length; i++) _morph[i] = math.lerp(_surface[i], _flat[i], t);
             _wb.View.UpdatePositions(_morph);
-        }
-
-        Color Checker(float2 uv)
-        {
-            int cx = (int)math.floor((uv.x * 0.5f + 0.5f) * checkerFrequency);
-            int cy = (int)math.floor((uv.y * 0.5f + 0.5f) * checkerFrequency);
-            return ((cx + cy) & 1) == 0 ? checkerA : checkerB;
         }
 
         void Free()
