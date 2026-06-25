@@ -154,7 +154,8 @@ MonoBehaviour:
   checkerFrequency: 6
   checkerA: {r: 0.95, g: 0.95, b: 0.95, a: 1}
   checkerB: {r: 0.15, g: 0.35, b: 0.85, a: 1}
-  separation: 1.35
+  unfold: 0
+  dragSensitivity: 0.05
 --- !u!4 &1336805995
 Transform:
   m_ObjectHideFlags: 0
@@ -326,7 +327,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 50
+  field of view: 55
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -352,8 +353,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2083104801}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.28494686, y: 0, z: 0, w: 0.95854336}
-  m_LocalPosition: {x: 0, y: 3, z: -4.4}
+  m_LocalRotation: {x: 0.31924742, y: 0, z: 0, w: 0.9476714}
+  m_LocalPosition: {x: 0, y: 1.9, z: -2.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
