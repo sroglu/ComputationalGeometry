@@ -37,11 +37,23 @@ namespace CompGeo.Visualization
         /// </summary>
         public bool ShowSurface;
 
-        /// <summary>Draw the 1px point cloud (default true). Turn off for a clean surface-only view.</summary>
+        /// <summary>Draw the vertices as small instanced spheres (default true). Off for a clean surface view.</summary>
         public bool ShowPoints = true;
 
         /// <summary>Draw the wireframe edges (default true). Turn off for a clean surface-only view.</summary>
         public bool ShowEdges = true;
+
+        /// <summary>Colour of the vertex spheres.</summary>
+        public Color PointColor = new Color(0f, 0.85f, 1f, 1f); // cyan
+
+        /// <summary>Vertex sphere radius as a fraction of the mesh's bounding size.</summary>
+        public float PointRadiusScale = 0.008f;
+
+        static Mesh s_sphere;
+        readonly Material _pointMaterial;
+        Vector3[] _pointPositions;
+        readonly Matrix4x4[] _pointMatrices = new Matrix4x4[1023];
+        float _pointRadius;
 
         public MeshGpuView()
         {
@@ -49,6 +61,9 @@ namespace CompGeo.Visualization
             if (shader == null)
                 throw new InvalidOperationException($"Shader '{ShaderName}' not found — ensure CompGeo.Visualization/Shaders is imported under URP.");
             _material = new Material(shader);
+
+            // Cyan instanced material for the vertex spheres (URP Unlit supports GPU instancing).
+            _pointMaterial = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { enableInstancing = true };
         }
 
         /// <summary>Build the point and edge meshes from <paramref name="mesh"/>. Colours start white.</summary>
@@ -105,6 +120,11 @@ namespace CompGeo.Visualization
 
             _bounds = _pointsMesh.bounds;
             colors.Dispose();
+
+            // Vertex spheres: cache positions + size for instanced drawing.
+            _pointPositions = vertices.ToArray();
+            _pointRadius = PointRadiusScale * _bounds.size.magnitude;
+            _pointMaterial.SetColor("_BaseColor", PointColor);
         }
 
         /// <summary>
@@ -122,6 +142,10 @@ namespace CompGeo.Visualization
             _edgesMesh.RecalculateBounds();
             _surfaceMesh.RecalculateBounds();
             _bounds = _pointsMesh.bounds;
+
+            if (_pointPositions == null || _pointPositions.Length != vertices.Length)
+                _pointPositions = new Vector3[vertices.Length];
+            vertices.CopyTo(_pointPositions);
         }
 
         /// <summary>Recolour every vertex from a scalar field (e.g. a geodesic distance field) via <see cref="Heatmap"/>.</summary>
@@ -195,9 +219,64 @@ namespace CompGeo.Visualization
                 };
                 Graphics.RenderMesh(rpSurface, _surfaceMesh, 0, objectToWorld);
             }
-            if (ShowPoints && _pointsMesh != null) Graphics.RenderMesh(rp, _pointsMesh, 0, objectToWorld);
+            if (ShowPoints) DrawPointSpheres(objectToWorld);
             if (ShowEdges && _edgesMesh != null) Graphics.RenderMesh(rp, _edgesMesh, 0, objectToWorld);
             if (_pathMesh != null) Graphics.RenderMesh(rp, _pathMesh, 0, objectToWorld);
+        }
+
+        /// <summary>
+        /// Draw the vertices as small cyan spheres via GPU instancing (one batched draw per ≤1023 verts).
+        /// Solid 3D markers replace 1px points, which on some backends rendered as huge quads and
+        /// z-fought the surface.
+        /// </summary>
+        void DrawPointSpheres(Matrix4x4 objectToWorld)
+        {
+            if (_pointPositions == null || _pointPositions.Length == 0 || _pointMaterial == null) return;
+
+            Mesh sphere = SphereMesh();
+            var prp = new RenderParams(_pointMaterial)
+            {
+                worldBounds = _bounds,
+                shadowCastingMode = ShadowCastingMode.Off,
+                receiveShadows = false,
+            };
+            Vector3 scale = Vector3.one * _pointRadius;
+            int n = _pointPositions.Length;
+            for (int i = 0; i < n;)
+            {
+                int count = Mathf.Min(_pointMatrices.Length, n - i);
+                for (int k = 0; k < count; k++)
+                    _pointMatrices[k] = objectToWorld * Matrix4x4.TRS(_pointPositions[i + k], Quaternion.identity, scale);
+                Graphics.RenderMeshInstanced(prp, sphere, 0, _pointMatrices, count);
+                i += count;
+            }
+        }
+
+        static Mesh SphereMesh()
+        {
+            if (s_sphere != null) return s_sphere;
+
+            float t = (1f + Mathf.Sqrt(5f)) / 2f; // icosahedron (20 tris) — round enough at marker scale
+            var v = new[]
+            {
+                new Vector3(-1, t, 0), new Vector3(1, t, 0), new Vector3(-1, -t, 0), new Vector3(1, -t, 0),
+                new Vector3(0, -1, t), new Vector3(0, 1, t), new Vector3(0, -1, -t), new Vector3(0, 1, -t),
+                new Vector3(t, 0, -1), new Vector3(t, 0, 1), new Vector3(-t, 0, -1), new Vector3(-t, 0, 1),
+            };
+            for (int i = 0; i < v.Length; i++) v[i] = v[i].normalized;
+            var tris = new[]
+            {
+                0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11,
+                1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
+                3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8, 3, 8, 9,
+                4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1,
+            };
+            s_sphere = new Mesh { name = "CompGeo PointSphere" };
+            s_sphere.vertices = v;
+            s_sphere.triangles = tris;
+            s_sphere.RecalculateNormals();
+            s_sphere.RecalculateBounds();
+            return s_sphere;
         }
 
         static Mesh NewMesh(string name)
@@ -214,6 +293,7 @@ namespace CompGeo.Visualization
             DestroyObject(_surfaceMesh);
             DestroyObject(_pathMesh);
             DestroyObject(_material);
+            DestroyObject(_pointMaterial);
             _pointsMesh = _edgesMesh = _surfaceMesh = _pathMesh = null;
         }
 
