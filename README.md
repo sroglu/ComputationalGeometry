@@ -48,7 +48,7 @@ Migration progresses in the order set out in `docs/MIGRATION.md §6`.
 | 2 | **HW1 Burst geodesics** — decrease-key `NativeIndexedMinHeap` (`CompGeo.Collections`); shared `GeodesicSearch` kernel exposed as `DijkstraGeodesics` (one-to-all) and `AStarGeodesics` (point-to-point, admissible Euclidean heuristic); `[BurstCompile]` jobs; `M for man0` regression scaffold | ✅ implemented (`Runtime/Collections/`, `Runtime/MeshProcessing/Geodesics/`) |
 | 3 | **GPU rendering layer (URP)** — `KdTree3` (`CompGeo.Collections`, point + ray nearest); `MeshGpuView` (single Points mesh + single Lines edge mesh + path, per-vertex heatmap, one draw/layer); `MeshPicker` (KD-tree ray/point pick); `Heatmap` ramp; URP vertex-colour shader; `GeodesicDemo` driver (click-pick → Dijkstra heatmap + A* path) | ✅ verified in-editor (URP asset `Assets/Settings/CompGeo_URP.asset` assigned; `Samples/GeodesicDemo.unity` renders the Dijkstra heatmap) |
 | 4 | **HW2 sparse Laplacian solve** — `CompGeo.Numerics`: `SparseMatrixCsr` (+ Burst SpMV), `SparseMatrixBuilder` (triplet→CSR), `ConjugateGradient` (Burst SPD solver); `MeshBoundary` (ordered loop) + `TutteEmbedding` (uniform-Laplacian unfold, boundary→unit circle, CG-solved interior) | ✅ implemented (`Runtime/Numerics/`, `Runtime/MeshProcessing/Parameterization/`) — replaces the original dense N×N inverse with an O(nnz) sparse CG solve |
-| 5 | **Polish / samples** — `UnfoldDemo`: animated Tutte unfold (3D surface ⇄ flat unit disk morph) with checkerboard-by-UV colouring, reuses `MeshGpuView.UpdatePositions` | 🟡 unfold sample done (`Samples/UnfoldDemo.unity`, verified in-editor); side-by-side RT preview still optional |
+| 5 | **Polish / samples** — `UnfoldDemo`: a checkerboard-shaded surface drawn beside its flat Tutte parameterization (same UV checker on both, so the mapping is legible); filled-surface rendering via `MeshGpuView.ShowSurface` | 🟡 unfold sample done (`Samples/UnfoldDemo.unity`) |
 
 The Dijkstra/A* path-finding is a **clean-room reimplementation** from the textbook spec on a
 data-oriented structure (CSR + `dist`/`pred` + indexed heap); it shares no code lineage with the
@@ -60,4 +60,4 @@ but the Tutte solver is covered by `ConjugateGradientTests` / `TutteEmbeddingTes
 (`Assets/CompGeo/Tests/Runtime/`). The URP layer is wired up: `Assets/Settings/CompGeo_URP.asset`
 is assigned in Project Settings → Graphics so the `CompGeo/VertexColorUnlit` shader renders. Press Play in
 `Assets/CompGeo/Samples/GeodesicDemo.unity` for the live Dijkstra heatmap / A* path demo, or in
-`Assets/CompGeo/Samples/UnfoldDemo.unity` to watch a surface morph to its flat Tutte parameterization.
+`Assets/CompGeo/Samples/UnfoldDemo.unity` to see a surface beside its flat Tutte parameterization.

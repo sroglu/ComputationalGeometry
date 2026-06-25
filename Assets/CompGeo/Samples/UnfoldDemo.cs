@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -8,14 +9,14 @@ using CompGeo.Visualization;
 namespace CompGeo.Samples
 {
     /// <summary>
-    /// Step 4–5 demo: builds a non-planar disk-topology surface, computes its <see cref="TutteEmbedding"/>
-    /// (uniform-Laplacian unfold to the unit circle), and continuously morphs the GPU view between the
-    /// 3D surface and its flattened 2D parameterization. Vertices are checkerboard-coloured by UV, so the
-    /// parameter grid is visible both wrapped on the surface and laid flat — and the flat state is visibly
-    /// fold-free (Tutte's guarantee).
+    /// Static Step 4–5 demo: a non-planar disk-topology surface (left) and its flattened
+    /// <see cref="TutteEmbedding"/> parameterization on the unit disk (right), drawn side by side and
+    /// shaded with the same checkerboard. The checker is computed from the flat UV, so the same cells
+    /// line up on both — you can read off how each patch of the surface maps into the plane (and that
+    /// the flat result is fold-free, Tutte's guarantee). Nothing animates.
     ///
-    /// Drop on a GameObject at the origin; ensure a tagged MainCamera looks at it. Requires the URP
-    /// pipeline asset assigned (see README) so <c>CompGeo/VertexColorUnlit</c> renders.
+    /// Drop on a GameObject at the origin; a tagged MainCamera looking at it. Requires the URP pipeline
+    /// asset assigned (see README) so <c>CompGeo/VertexColorUnlit</c> renders.
     /// </summary>
     public sealed class UnfoldDemo : MonoBehaviour
     {
@@ -24,66 +25,56 @@ namespace CompGeo.Samples
         public float spacing = 0.045f;
         public float heightAmplitude = 0.25f;
 
-        [Header("Unfold morph")]
-        [Min(0.1f)] public float morphPeriod = 4f;
-        // Keep well below gridSize (≈ 4 vertices per checker cell) so the per-vertex checker
-        // is properly sampled — a frequency near the vertex resolution aliases into coarse blobs.
+        [Header("Checkerboard / layout")]
+        // Keep well below gridSize (≈ 4 vertices per checker cell) so the per-vertex checker is
+        // properly sampled — a frequency near the vertex resolution aliases into coarse blobs.
         [Min(1)] public int checkerFrequency = 12;
         public Color checkerA = new Color(0.95f, 0.95f, 0.95f, 1f);
         public Color checkerB = new Color(0.15f, 0.35f, 0.85f, 1f);
+        public float separation = 1.35f;
 
         MeshData _mesh;
+        MeshData _flatMesh;
         MeshGpuView _view;
-        NativeArray<float3> _surface; // original 3D positions (centred)
-        NativeArray<float3> _flat;    // UV positions on the y = 0 plane
-        NativeArray<float3> _morph;   // per-frame interpolation
+        MeshGpuView _flatView;
 
         void Start()
         {
-            _mesh = BuildGrid(gridSize, spacing, heightAmplitude);
-            // Clean filled-surface look: solid checker triangles only, no point/wireframe overlay.
-            _view = new MeshGpuView { ShowSurface = true, ShowPoints = false, ShowEdges = false };
-            _view.Build(_mesh);
+            BuildGridData(gridSize, spacing, heightAmplitude, out var positions, out var triangles);
+            _mesh = MeshBuilder.Build(positions, triangles, Allocator.Persistent);
 
             var uv = TutteEmbedding.Compute(_mesh, Allocator.Persistent);
 
-            int n = _mesh.VertexCount;
-            _surface = new NativeArray<float3>(n, Allocator.Persistent);
-            _flat = new NativeArray<float3>(n, Allocator.Persistent);
-            _morph = new NativeArray<float3>(n, Allocator.Persistent);
+            // Flat mesh: same topology, positions taken from the UV plane (y = 0).
+            var flat = new List<float3>(uv.Length);
+            for (int i = 0; i < uv.Length; i++) flat.Add(new float3(uv[i].x, 0f, uv[i].y));
+            _flatMesh = MeshBuilder.Build(flat, triangles, Allocator.Persistent);
 
-            // Centre the surface on the origin so it morphs in place over the flat disk.
-            float half = 0.5f * (gridSize - 1) * spacing;
-            for (int i = 0; i < n; i++)
-            {
-                float3 p = _mesh.Positions[i];
-                _surface[i] = new float3(p.x - half, p.y, p.z - half);
-                _flat[i] = new float3(uv[i].x, 0f, uv[i].y);
-            }
+            // Shared checkerboard from the UV, so the cells correspond on both meshes.
+            var colors = new NativeArray<Color>(uv.Length, Allocator.Temp);
+            for (int i = 0; i < uv.Length; i++) colors[i] = Checker(uv[i]);
 
-            // Checkerboard colour from the UV coordinates (fixed for the run).
-            var colors = new NativeArray<Color>(n, Allocator.Temp);
-            for (int i = 0; i < n; i++) colors[i] = Checker(uv[i]);
+            _view = new MeshGpuView { ShowSurface = true, ShowPoints = false, ShowEdges = false };
+            _view.Build(_mesh);
             _view.SetColors(colors);
-            colors.Dispose();
 
+            _flatView = new MeshGpuView { ShowSurface = true, ShowPoints = false, ShowEdges = false };
+            _flatView.Build(_flatMesh);
+            _flatView.SetColors(colors);
+
+            colors.Dispose();
             uv.Dispose();
         }
 
         void Update()
         {
-            // Smooth ping-pong in [0,1]: 0 = 3D surface, 1 = flat parameterization.
-            float t = 0.5f - 0.5f * math.cos(Time.time / morphPeriod * 2f * math.PI);
-            for (int i = 0; i < _morph.Length; i++)
-                _morph[i] = math.lerp(_surface[i], _flat[i], t);
-
-            _view.UpdatePositions(_morph);
-            _view.DrawNow(transform.localToWorldMatrix);
+            Matrix4x4 baseM = transform.localToWorldMatrix;
+            _view.DrawNow(baseM * Matrix4x4.Translate(new Vector3(-separation, 0f, 0f)));
+            _flatView.DrawNow(baseM * Matrix4x4.Translate(new Vector3(separation, 0f, 0f)));
         }
 
         Color Checker(float2 uv)
         {
-            // Map the unit-disk UV from [-1,1] to [0,1], then tile.
             int cx = (int)math.floor((uv.x * 0.5f + 0.5f) * checkerFrequency);
             int cy = (int)math.floor((uv.y * 0.5f + 0.5f) * checkerFrequency);
             return ((cx + cy) & 1) == 0 ? checkerA : checkerB;
@@ -92,23 +83,23 @@ namespace CompGeo.Samples
         void OnDestroy()
         {
             _view?.Dispose();
-            if (_surface.IsCreated) _surface.Dispose();
-            if (_flat.IsCreated) _flat.Dispose();
-            if (_morph.IsCreated) _morph.Dispose();
+            _flatView?.Dispose();
             _mesh.Dispose();
+            _flatMesh.Dispose();
         }
 
-        static MeshData BuildGrid(int m, float spacing, float amp)
+        static void BuildGridData(int m, float spacing, float amp, out List<float3> positions, out List<int3> triangles)
         {
-            var positions = new System.Collections.Generic.List<float3>(m * m);
+            float half = (m - 1) * spacing * 0.5f; // centre the surface on the origin
+            positions = new List<float3>(m * m);
             for (int j = 0; j < m; j++)
             for (int i = 0; i < m; i++)
             {
                 float y = amp * math.sin(i * 0.5f) * math.cos(j * 0.5f);
-                positions.Add(new float3(i * spacing, y, j * spacing));
+                positions.Add(new float3(i * spacing - half, y, j * spacing - half));
             }
 
-            var triangles = new System.Collections.Generic.List<int3>((m - 1) * (m - 1) * 2);
+            triangles = new List<int3>((m - 1) * (m - 1) * 2);
             for (int j = 0; j < m - 1; j++)
             for (int i = 0; i < m - 1; i++)
             {
@@ -119,8 +110,6 @@ namespace CompGeo.Samples
                 triangles.Add(new int3(a, b, d));
                 triangles.Add(new int3(a, d, c));
             }
-
-            return MeshBuilder.Build(positions, triangles, Allocator.Persistent);
         }
     }
 }
