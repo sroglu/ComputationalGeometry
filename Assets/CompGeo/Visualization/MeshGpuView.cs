@@ -137,6 +137,7 @@ namespace CompGeo.Visualization
         {
             _pointsMesh.SetColors(colors);
             _edgesMesh.SetColors(colors);
+            _surfaceMesh.SetColors(colors);
         }
 
         /// <summary>Build/replace the highlighted path from a vertex sequence (e.g. a reconstructed shortest path).</summary>
