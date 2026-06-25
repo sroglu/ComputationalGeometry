@@ -77,6 +77,21 @@ namespace CompGeo.Visualization
             colors.Dispose();
         }
 
+        /// <summary>
+        /// Replace the vertex positions of the point and edge meshes in place (topology/colours unchanged).
+        /// Used to animate per-frame geometry — e.g. morphing a surface to its planar parameterization
+        /// (<c>UnfoldDemo</c>). <paramref name="positions"/> length must equal the vertex count.
+        /// </summary>
+        public void UpdatePositions(NativeArray<float3> positions)
+        {
+            var vertices = positions.Reinterpret<Vector3>();
+            _pointsMesh.SetVertices(vertices);
+            _edgesMesh.SetVertices(vertices);
+            _pointsMesh.RecalculateBounds();
+            _edgesMesh.RecalculateBounds();
+            _bounds = _pointsMesh.bounds;
+        }
+
         /// <summary>Recolour every vertex from a scalar field (e.g. a geodesic distance field) via <see cref="Heatmap"/>.</summary>
         public void SetHeatmap(NativeArray<float> field, Color unreachable)
         {
