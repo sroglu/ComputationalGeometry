@@ -48,16 +48,21 @@ Migration progresses in the order set out in `docs/MIGRATION.md §6`.
 | 2 | **HW1 Burst geodesics** — decrease-key `NativeIndexedMinHeap` (`CompGeo.Collections`); shared `GeodesicSearch` kernel exposed as `DijkstraGeodesics` (one-to-all) and `AStarGeodesics` (point-to-point, admissible Euclidean heuristic); `[BurstCompile]` jobs; `M for man0` regression scaffold | ✅ implemented (`Runtime/Collections/`, `Runtime/MeshProcessing/Geodesics/`) |
 | 3 | **GPU rendering layer (URP)** — `KdTree3` (`CompGeo.Collections`, point + ray nearest); `MeshGpuView` (single Points mesh + single Lines edge mesh + path, per-vertex heatmap, one draw/layer); `MeshPicker` (KD-tree ray/point pick); `Heatmap` ramp; URP vertex-colour shader; `GeodesicDemo` driver (click-pick → Dijkstra heatmap + A* path) | ✅ verified in-editor (URP asset `Assets/Settings/CompGeo_URP.asset` assigned; `Samples/GeodesicDemo.unity` renders the Dijkstra heatmap) |
 | 4 | **HW2 sparse Laplacian solve** — `CompGeo.Numerics`: `SparseMatrixCsr` (+ Burst SpMV), `SparseMatrixBuilder` (triplet→CSR), `ConjugateGradient` (Burst SPD solver); `MeshBoundary` (ordered loop) + `TutteEmbedding` (uniform-Laplacian unfold, boundary→unit circle, CG-solved interior) | ✅ implemented (`Runtime/Numerics/`, `Runtime/MeshProcessing/Parameterization/`) — replaces the original dense N×N inverse with an O(nnz) sparse CG solve |
-| 5 | **Polish / samples** — `UnfoldDemo`: a checkerboard-shaded surface that automatically unfolds onto its flat Tutte parameterization and back (hold left mouse + drag to rotate/inspect); filled-surface rendering via `MeshGpuView.ShowSurface` | 🟡 unfold sample done (`Samples/UnfoldDemo.unity`) |
+| 5 | **Interactive workbench + samples** — runtime uGUI panel (mesh dropdown, vertex/edge/surface toggles, reset-camera) on the new core, with mouse-orbit camera and inspector mesh selection; real CENG789 meshes (`StreamingAssets/meshes1/`) loaded via `OffReader`. `GeodesicDemo` = HW1 (click source/target → Dijkstra/A* heatmap + path), `UnfoldDemo` = HW2 (auto Tutte unfold). `Workbench` + `GeodesicsMode`/`UnfoldMode` + `WorkbenchUI`/`WorkbenchCamera`. | 🟡 verified in-editor (man0 geodesics + face unfold render) |
 
 The Dijkstra/A* path-finding is a **clean-room reimplementation** from the textbook spec on a
 data-oriented structure (CSR + `dist`/`pred` + indexed heap); it shares no code lineage with the
 original course project's unlicensed-gist `PriorityQueue<double,Path>`/`HashSet` version. Same
 kernel is intended for ProjectFoundation's `DataStructures` (see its FOUNDATION-MIGRATION-REPORT).
 
-`Sandbox/` remains a scaffolded placeholder; a polished unfold demo (Step 5) is still to come,
-but the Tutte solver is covered by `ConjugateGradientTests` / `TutteEmbeddingTests`
-(`Assets/CompGeo/Tests/Runtime/`). The URP layer is wired up: `Assets/Settings/CompGeo_URP.asset`
-is assigned in Project Settings → Graphics so the `CompGeo/VertexColorUnlit` shader renders. Press Play in
-`Assets/CompGeo/Samples/GeodesicDemo.unity` for the live Dijkstra heatmap / A* path demo, or in
-`Assets/CompGeo/Samples/UnfoldDemo.unity` to watch a surface unfold onto its flat Tutte parameterization (drag to rotate).
+`Sandbox/` remains a scaffolded placeholder; the Tutte solver is covered by `ConjugateGradientTests` /
+`TutteEmbeddingTests` (`Assets/CompGeo/Tests/Runtime/`). The URP layer is wired up:
+`Assets/Settings/CompGeo_URP.asset` is assigned in Project Settings → Graphics so the
+`CompGeo/VertexColorUnlit` shader renders.
+
+The two sample scenes are interactive workbenches (a runtime uGUI panel built on the new core — pick a
+mesh from the dropdown, toggle vertices/edges/surface, orbit with the mouse; the mesh can also be set in
+the inspector). Press Play in `Assets/CompGeo/Samples/GeodesicDemo.unity` for HW1 — left-click a source
+and right-click a target to draw the Dijkstra/A* geodesic over the real `man0` mesh — or in
+`Assets/CompGeo/Samples/UnfoldDemo.unity` for HW2, where a `face` mesh unfolds onto its flat Tutte
+parameterization. The course meshes live under `Assets/StreamingAssets/meshes1/`.
