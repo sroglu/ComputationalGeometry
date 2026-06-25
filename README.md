@@ -47,7 +47,7 @@ Migration progresses in the order set out in `docs/MIGRATION.md §6`.
 | 1 | **Core** — SoA/CSR mesh (`MeshData`), OFF I/O (`OffReader`), adjacency builder, geometric predicates & primitives | ✅ implemented (`Assets/CompGeo/Runtime/Core/`) |
 | 2 | **HW1 Burst geodesics** — decrease-key `NativeIndexedMinHeap` (`CompGeo.Collections`); shared `GeodesicSearch` kernel exposed as `DijkstraGeodesics` (one-to-all) and `AStarGeodesics` (point-to-point, admissible Euclidean heuristic); `[BurstCompile]` jobs; `M for man0` regression scaffold | ✅ implemented (`Runtime/Collections/`, `Runtime/MeshProcessing/Geodesics/`) |
 | 3 | **GPU rendering layer (URP)** — `KdTree3` (`CompGeo.Collections`, point + ray nearest); `MeshGpuView` (single Points mesh + single Lines edge mesh + path, per-vertex heatmap, one draw/layer); `MeshPicker` (KD-tree ray/point pick); `Heatmap` ramp; URP vertex-colour shader; `GeodesicDemo` driver (click-pick → Dijkstra heatmap + A* path) | ✅ verified in-editor (URP asset `Assets/Settings/CompGeo_URP.asset` assigned; `Samples/GeodesicDemo.unity` renders the Dijkstra heatmap) |
-| 4 | HW2 sparse Laplacian solve (CSR assembly + sparse SPD solver) | ⬜ planned |
+| 4 | **HW2 sparse Laplacian solve** — `CompGeo.Numerics`: `SparseMatrixCsr` (+ Burst SpMV), `SparseMatrixBuilder` (triplet→CSR), `ConjugateGradient` (Burst SPD solver); `MeshBoundary` (ordered loop) + `TutteEmbedding` (uniform-Laplacian unfold, boundary→unit circle, CG-solved interior) | ✅ implemented (`Runtime/Numerics/`, `Runtime/MeshProcessing/Parameterization/`) — replaces the original dense N×N inverse with an O(nnz) sparse CG solve |
 | 5 | Polish — heatmap viz, unfolded-result RT preview, samples | ⬜ planned |
 
 The Dijkstra/A* path-finding is a **clean-room reimplementation** from the textbook spec on a
@@ -55,7 +55,8 @@ data-oriented structure (CSR + `dist`/`pred` + indexed heap); it shares no code 
 original course project's unlicensed-gist `PriorityQueue<double,Path>`/`HashSet` version. Same
 kernel is intended for ProjectFoundation's `DataStructures` (see its FOUNDATION-MIGRATION-REPORT).
 
-The remaining `Runtime/Numerics`, `MeshProcessing/Parameterization` and `Sandbox/`
-are scaffolded placeholders for the steps above. The URP layer is wired up: `Assets/Settings/CompGeo_URP.asset`
+`Sandbox/` remains a scaffolded placeholder; a polished unfold demo (Step 5) is still to come,
+but the Tutte solver is covered by `ConjugateGradientTests` / `TutteEmbeddingTests`
+(`Assets/CompGeo/Tests/Runtime/`). The URP layer is wired up: `Assets/Settings/CompGeo_URP.asset`
 is assigned in Project Settings → Graphics so the `CompGeo/VertexColorUnlit` shader renders; open
 `Assets/CompGeo/Samples/GeodesicDemo.unity` and press Play to see the live Dijkstra heatmap / A* path demo.

@@ -1,10 +1,7 @@
 {
-    "name": "CompGeo.MeshProcessing",
-    "rootNamespace": "CompGeo.MeshProcessing",
+    "name": "CompGeo.Numerics",
+    "rootNamespace": "CompGeo.Numerics",
     "references": [
-        "CompGeo.Core",
-        "CompGeo.Collections",
-        "CompGeo.Numerics",
         "Unity.Mathematics",
         "Unity.Collections",
         "Unity.Burst"

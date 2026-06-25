@@ -5,6 +5,7 @@
         "CompGeo.Core",
         "CompGeo.Collections",
         "CompGeo.MeshProcessing",
+        "CompGeo.Numerics",
         "Unity.Mathematics",
         "Unity.Collections",
         "UnityEngine.TestRunner",
