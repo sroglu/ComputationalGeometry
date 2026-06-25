@@ -66,6 +66,22 @@ namespace CompGeo.Samples
             _morph = new NativeArray<float3>(n, Allocator.Persistent);
             for (int i = 0; i < n; i++) _surface[i] = mesh.Positions[i];
 
+            // Tutte's boundary winding can come out mirrored relative to the surface on some meshes (e.g.
+            // the low-poly face), which makes the flat map look inside-out and collapses the alignment
+            // below to a tiny patch. Detect it by comparing per-triangle orientation in UV vs the surface's
+            // XZ projection, and un-mirror the UV so the two windings agree.
+            int agree = 0, disagree = 0;
+            for (int t = 0; t < mesh.TriangleCount; t++)
+            {
+                int3 tr = mesh.Triangles[t];
+                float aUv = Cross2(uv[tr.y] - uv[tr.x], uv[tr.z] - uv[tr.x]);
+                float3 pa = mesh.Positions[tr.x], pb = mesh.Positions[tr.y], pc = mesh.Positions[tr.z];
+                float aXz = Cross2(new float2(pb.x - pa.x, pb.z - pa.z), new float2(pc.x - pa.x, pc.z - pa.z));
+                if (aUv * aXz >= 0f) agree++; else disagree++;
+            }
+            if (disagree > agree)
+                for (int i = 0; i < n; i++) uv[i] = new float2(-uv[i].x, uv[i].y);
+
             // Procrustes-align the flat UV to the surface's XZ footprint (rotation + uniform scale +
             // translation) so the unfold is a clean flatten-in-place, not a global spin/grow.
             float2 meanP = float2.zero, meanQ = float2.zero;
@@ -108,11 +124,13 @@ namespace CompGeo.Samples
             Apply(t);
         }
 
-        void Apply(float t)
+        public void Apply(float t)
         {
             for (int i = 0; i < _morph.Length; i++) _morph[i] = math.lerp(_surface[i], _flat[i], t);
             _wb.View.UpdatePositions(_morph);
         }
+
+        static float Cross2(float2 a, float2 b) => a.x * b.y - a.y * b.x;
 
         void Free()
         {
