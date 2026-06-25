@@ -60,10 +60,37 @@ namespace CompGeo.Samples
             _surface = new NativeArray<float3>(n, Allocator.Persistent);
             _flat = new NativeArray<float3>(n, Allocator.Persistent);
             _morph = new NativeArray<float3>(n, Allocator.Persistent);
+            for (int i = 0; i < n; i++) _surface[i] = _mesh.Positions[i];
+
+            // Procrustes-align the flat UV to the surface's XZ footprint (best rotation + uniform scale +
+            // translation). This strips the global spin/size difference between the Tutte disk and the
+            // grid, so the morph reads as a clean flatten-in-place — only the genuine parameter
+            // distortion remains, no distracting whole-object rotation or growing/shrinking.
+            float2 meanP = float2.zero, meanQ = float2.zero;
             for (int i = 0; i < n; i++)
             {
-                _surface[i] = _mesh.Positions[i];
-                _flat[i] = new float3(uv[i].x, 0f, uv[i].y);
+                meanP += uv[i];
+                meanQ += new float2(_surface[i].x, _surface[i].z);
+            }
+            meanP /= n; meanQ /= n;
+
+            float a = 0f, b = 0f, den = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float2 p = uv[i] - meanP;
+                float2 q = new float2(_surface[i].x, _surface[i].z) - meanQ;
+                a += p.x * q.x + p.y * q.y; // Σ p·q
+                b += p.x * q.y - p.y * q.x; // Σ p×q
+                den += p.x * p.x + p.y * p.y;
+            }
+            // Scaled-rotation matrix M = (1/den) * [[a, -b], [b, a]] (2D Procrustes similarity).
+            float m00 = a / den, m01 = -b / den, m10 = b / den, m11 = a / den;
+            for (int i = 0; i < n; i++)
+            {
+                float2 p = uv[i] - meanP;
+                float fx = m00 * p.x + m01 * p.y + meanQ.x;
+                float fy = m10 * p.x + m11 * p.y + meanQ.y;
+                _flat[i] = new float3(fx, 0f, fy);
             }
 
             var colors = new NativeArray<Color>(n, Allocator.Temp);
