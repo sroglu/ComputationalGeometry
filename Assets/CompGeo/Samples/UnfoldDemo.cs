@@ -26,7 +26,7 @@ namespace CompGeo.Samples
 
         [Header("Unfold morph")]
         [Min(0.1f)] public float morphPeriod = 4f;
-        [Min(1)] public int checkerFrequency = 10;
+        [Min(1)] public int checkerFrequency = 24;
         public Color checkerA = new Color(0.95f, 0.95f, 0.95f, 1f);
         public Color checkerB = new Color(0.15f, 0.35f, 0.85f, 1f);
 
@@ -39,7 +39,7 @@ namespace CompGeo.Samples
         void Start()
         {
             _mesh = BuildGrid(gridSize, spacing, heightAmplitude);
-            _view = new MeshGpuView();
+            _view = new MeshGpuView { ShowSurface = true };
             _view.Build(_mesh);
 
             var uv = TutteEmbedding.Compute(_mesh, Allocator.Persistent);

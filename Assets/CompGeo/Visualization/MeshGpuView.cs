@@ -24,9 +24,17 @@ namespace CompGeo.Visualization
         readonly Material _material;
         Mesh _pointsMesh;
         Mesh _edgesMesh;
+        Mesh _surfaceMesh;
         Mesh _pathMesh;
         Bounds _bounds;
         int _vertexCount;
+
+        /// <summary>
+        /// When true, <see cref="DrawNow"/> also draws the filled triangle surface (per-vertex coloured),
+        /// not just the point cloud and wireframe. Off by default so the heatmap/point views stay as-is;
+        /// surfaces (e.g. the unfold demo) turn it on for a legible solid render.
+        /// </summary>
+        public bool ShowSurface;
 
         public MeshGpuView()
         {
@@ -73,6 +81,21 @@ namespace CompGeo.Visualization
             _edgesMesh.SetIndices(edgeIndices.ToArray(), MeshTopology.Lines, 0);
             _edgesMesh.RecalculateBounds();
 
+            // Filled surface: three indices per triangle (drawn only when ShowSurface).
+            var triIndices = new int[mesh.TriangleCount * 3];
+            for (int t = 0; t < mesh.TriangleCount; t++)
+            {
+                int3 tri = mesh.Triangles[t];
+                triIndices[t * 3] = tri.x;
+                triIndices[t * 3 + 1] = tri.y;
+                triIndices[t * 3 + 2] = tri.z;
+            }
+            _surfaceMesh = NewMesh("CompGeo Surface");
+            _surfaceMesh.SetVertices(vertices);
+            _surfaceMesh.SetColors(colors);
+            _surfaceMesh.SetIndices(triIndices, MeshTopology.Triangles, 0);
+            _surfaceMesh.RecalculateBounds();
+
             _bounds = _pointsMesh.bounds;
             colors.Dispose();
         }
@@ -87,8 +110,10 @@ namespace CompGeo.Visualization
             var vertices = positions.Reinterpret<Vector3>();
             _pointsMesh.SetVertices(vertices);
             _edgesMesh.SetVertices(vertices);
+            _surfaceMesh.SetVertices(vertices);
             _pointsMesh.RecalculateBounds();
             _edgesMesh.RecalculateBounds();
+            _surfaceMesh.RecalculateBounds();
             _bounds = _pointsMesh.bounds;
         }
 
@@ -141,6 +166,7 @@ namespace CompGeo.Visualization
                 shadowCastingMode = ShadowCastingMode.Off,
                 receiveShadows = false,
             };
+            if (ShowSurface && _surfaceMesh != null) Graphics.RenderMesh(rp, _surfaceMesh, 0, objectToWorld);
             if (_pointsMesh != null) Graphics.RenderMesh(rp, _pointsMesh, 0, objectToWorld);
             if (_edgesMesh != null) Graphics.RenderMesh(rp, _edgesMesh, 0, objectToWorld);
             if (_pathMesh != null) Graphics.RenderMesh(rp, _pathMesh, 0, objectToWorld);
@@ -157,9 +183,10 @@ namespace CompGeo.Visualization
         {
             DestroyObject(_pointsMesh);
             DestroyObject(_edgesMesh);
+            DestroyObject(_surfaceMesh);
             DestroyObject(_pathMesh);
             DestroyObject(_material);
-            _pointsMesh = _edgesMesh = _pathMesh = null;
+            _pointsMesh = _edgesMesh = _surfaceMesh = _pathMesh = null;
         }
 
         static void DestroyObject(UnityEngine.Object o)
