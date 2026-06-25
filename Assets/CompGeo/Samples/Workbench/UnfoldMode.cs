@@ -44,6 +44,11 @@ namespace CompGeo.Samples
         public void SetMorphing(bool on) => morphing = on;
         public void ToggleMorphing() => morphing = !morphing;
 
+        // Manual fold state, used when auto-morph is off: toggle between folded (3D) and unfolded (flat).
+        bool _unfolded = true;
+        public void SetUnfolded(bool on) => _unfolded = on;
+        public void ToggleFold() => _unfolded = !_unfolded;
+
         void OnMeshChanged()
         {
             Free();
@@ -120,7 +125,9 @@ namespace CompGeo.Samples
         void Update()
         {
             if (!_ready) return;
-            float t = morphing ? 0.5f - 0.5f * math.cos(Time.time / morphPeriod * 2f * math.PI) : 1f;
+            float t = morphing
+                ? 0.5f - 0.5f * math.cos(Time.time / morphPeriod * 2f * math.PI)
+                : (_unfolded ? 1f : 0f);
             Apply(t);
         }
 

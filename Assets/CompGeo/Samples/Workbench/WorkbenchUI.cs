@@ -64,6 +64,9 @@ namespace CompGeo.Samples
                     morph.SetIsOnWithoutNotify(_unfold.morphing);
                     morph.onValueChanged.AddListener(_unfold.SetMorphing);
                 }
+
+                Button fold = Find<Button>("FoldButton");
+                if (fold != null) fold.onClick.AddListener(_unfold.ToggleFold);
             }
         }
 
