@@ -3,6 +3,7 @@ using System.Globalization;
 using UnityEngine;
 using UnityEngine.UI;
 using CompGeo.Core;
+using CompGeo.MeshProcessing;
 
 namespace CompGeo.Samples
 {
@@ -47,20 +48,20 @@ namespace CompGeo.Samples
             Bind("LoadButton", () => { if (mesh != null) _wb.LoadMesh(mesh.value); });
             Bind("RemeshButton", _wb.Remesh);
 
-            Dropdown pmethod = Find<Dropdown>("MethodDropdown");
-            if (pmethod != null)
+            Dropdown rmode = Find<Dropdown>("MethodDropdown");
+            if (rmode != null)
             {
-                pmethod.ClearOptions();
-                pmethod.AddOptions(new List<string> { "Homework (cov-rows)", "Eigenvectors (PCA)" });
-                pmethod.SetValueWithoutNotify((int)_wb.remeshMethod);
-                pmethod.onValueChanged.AddListener(i => _wb.remeshMethod = (PlaneMethod)i);
+                rmode.ClearOptions();
+                rmode.AddOptions(new List<string> { "Original (homework)", "Improved (mutual-agreement)" });
+                rmode.SetValueWithoutNotify((int)_wb.remeshMode);
+                rmode.onValueChanged.AddListener(i => _wb.remeshMode = (RemeshMode)i);
             }
 
             Dropdown umethod = Find<Dropdown>("UnfoldMethodDropdown");
             if (umethod != null)
             {
                 umethod.ClearOptions();
-                umethod.AddOptions(new List<string> { "Tutte", "PCA (eigenvectors)" });
+                umethod.AddOptions(new List<string> { "Original (homework)", "Tutte (performant)" });
                 umethod.SetValueWithoutNotify((int)_wb.unfoldMethod);
                 umethod.onValueChanged.AddListener(i => _wb.unfoldMethod = (UnfoldMethod)i);
             }

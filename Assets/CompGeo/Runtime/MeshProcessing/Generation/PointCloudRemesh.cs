@@ -7,6 +7,15 @@ using CompGeo.Collections;
 
 namespace CompGeo.MeshProcessing
 {
+    /// <summary>Reconstruction variants offered by the Remesh dropdown.</summary>
+    public enum RemeshMode
+    {
+        /// <summary>The faithful homework: union of independent per-neighbourhood ear-clipped patches (a soup).</summary>
+        Original,
+        /// <summary>The improved, near-manifold mutual-agreement reconstruction.</summary>
+        Improved,
+    }
+
     /// <summary>
     /// Rebuilds surface connectivity from a raw point set (the CENG789 "Mesh Generation" part). The
     /// original homework unioned an independent triangulation of every point's k-NN neighbourhood, which
@@ -24,8 +33,73 @@ namespace CompGeo.MeshProcessing
         const int Bits = 21;                 // vertex indices must fit in 21 bits (≤ ~2.1M vertices)
         const long Mask = (1L << Bits) - 1;
 
+        /// <summary>
+        /// Reconstruct the surface: <see cref="RemeshMode.Original"/> = the homework's patch-union soup,
+        /// <see cref="RemeshMode.Improved"/> = the mutual-agreement near-manifold mesh. Both use the
+        /// homework's covariance-row local plane.
+        /// </summary>
+        public static MeshData Remesh(NativeArray<float3> positions, int k, RemeshMode mode, Allocator allocator)
+            => mode == RemeshMode.Original
+                ? BuildSoup(positions, k, allocator)
+                : Build(positions, k, PlaneMethod.CovarianceRows, allocator, parallel: true);
+
         public static MeshData Remesh(NativeArray<float3> positions, int k, PlaneMethod method, Allocator allocator)
             => Build(positions, k, method, allocator, parallel: false);
+
+        /// <summary>
+        /// The faithful original "Mesh Generation": greedily group each unprocessed point's k-NN, fit the
+        /// covariance-row plane, ear-clip the projected neighbourhood, and union all patches — overlapping,
+        /// non-manifold (a triangle soup), exactly as the homework did.
+        /// </summary>
+        static MeshData BuildSoup(NativeArray<float3> positions, int k, Allocator allocator)
+        {
+            int n = positions.Length;
+            var posList = new List<float3>(n);
+            for (int i = 0; i < n; i++) posList.Add(positions[i]);
+
+            var triangles = new List<int3>();
+            if (n >= 3)
+            {
+                k = math.clamp(k, 3, n);
+                using var tree = KdTree3.Build(positions, Allocator.Persistent);
+                var nbrIdx = new NativeArray<int>(k, Allocator.Persistent);
+                var nbrDst = new NativeArray<float>(k, Allocator.Persistent);
+                var processed = new bool[n];
+                var groupPts = new List<float3>(k);
+                var pts2d = new List<float2>(k);
+
+                for (int seed = 0; seed < n; seed++)
+                {
+                    if (processed[seed]) continue;
+                    int got = tree.KNearest(positions[seed], nbrIdx, nbrDst);
+                    groupPts.Clear();
+                    var members = new int[got];
+                    for (int i = 0; i < got; i++)
+                    {
+                        members[i] = nbrIdx[i];
+                        groupPts.Add(positions[nbrIdx[i]]);
+                        processed[nbrIdx[i]] = true;
+                    }
+                    if (got < 3) continue;
+
+                    Covariance.Plane(groupPts, PlaneMethod.CovarianceRows, out float3 d1, out float3 d2, out _, out float3 c);
+                    pts2d.Clear();
+                    for (int i = 0; i < got; i++)
+                    {
+                        float3 rel = groupPts[i] - c;
+                        pts2d.Add(new float2(math.dot(d1, rel), math.dot(d2, rel)));
+                    }
+
+                    int[] tri = EarClippingTriangulator.Triangulate(pts2d);
+                    for (int t = 0; t < tri.Length; t += 3)
+                        triangles.Add(new int3(members[tri[t]], members[tri[t + 1]], members[tri[t + 2]]));
+                }
+
+                nbrIdx.Dispose();
+                nbrDst.Dispose();
+            }
+            return MeshBuilder.Build(posList, triangles, allocator);
+        }
 
         /// <summary>
         /// Same result as <see cref="Remesh(NativeArray{float3},int,PlaneMethod,Allocator)"/> — the

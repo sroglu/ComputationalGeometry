@@ -10,8 +10,9 @@ using CompGeo.Visualization;
 
 namespace CompGeo.Samples
 {
-    /// <summary>The two surface-flattening methods exposed by the Control Panel's Unfold dropdown.</summary>
-    public enum UnfoldMethod { Tutte, Pca }
+    /// <summary>The two unfold methods: the homework's dense solve, or the performant sparse-CG Tutte
+    /// (same round result, far faster). Both pin the boundary to a circle and solve the uniform Laplacian.</summary>
+    public enum UnfoldMethod { Original, Tutte }
 
     /// <summary>
     /// Hub for the interactive samples (the new-core stand-in for the original <c>ModelManager</c>): owns
@@ -34,12 +35,12 @@ namespace CompGeo.Samples
 
         [Header("Mesh generation")]
         [Range(3, 32)] public int remeshK = 8;
-        [Tooltip("Local-plane method for Remesh: the homework's covariance rows, or true eigenvectors (PCA).")]
-        public PlaneMethod remeshMethod = PlaneMethod.CovarianceRows;
+        [Tooltip("Reconstruction: the homework's patch-union soup, or the improved mutual-agreement mesh.")]
+        public RemeshMode remeshMode = RemeshMode.Original;
 
         [Header("Unfold")]
-        [Tooltip("Flatten method: Tutte (Laplacian solve, needs a boundary) or PCA (eigenvector plane).")]
-        public UnfoldMethod unfoldMethod = UnfoldMethod.Tutte;
+        [Tooltip("Original (dense homework solve) or Tutte (performant sparse CG). Same round result.")]
+        public UnfoldMethod unfoldMethod = UnfoldMethod.Original;
 
         public MeshData Mesh => _mesh;
         public MeshGpuView View => _view;
@@ -77,7 +78,7 @@ namespace CompGeo.Samples
         public void Remesh()
         {
             if (!_loaded) return;
-            MeshData newMesh = PointCloudRemesh.RemeshParallel(_mesh.Positions, remeshK, remeshMethod, Allocator.Persistent);
+            MeshData newMesh = PointCloudRemesh.Remesh(_mesh.Positions, remeshK, remeshMode, Allocator.Persistent);
             _view.Dispose();
             _picker.Dispose();
             _mesh.Dispose();
@@ -105,7 +106,8 @@ namespace CompGeo.Samples
                 }
                 else
                 {
-                    PcaUnfold.Compute(_mesh.Positions, uv, PlaneMethod.Eigenvectors);
+                    using var t = OriginalUnfold.Compute(_mesh, Allocator.Persistent); // dense homework solve
+                    uv.CopyFrom(t);
                 }
             }
             catch (ArgumentException e)
