@@ -159,8 +159,27 @@ namespace CompGeo.MeshProcessing
             }
 
             int[] tri = DelaunayTriangulator.Triangulate(p2);
-            for (int t = 0; t < tri.Length; t += 3)
-                outTris.Add(new int3(global[tri[t]], global[tri[t + 1]], global[tri[t + 2]]));
+            int m = tri.Length / 3;
+            if (m == 0) return;
+
+            // A patch's Delaunay fills its convex hull, which can web across real gaps (between two
+            // limbs, say). Discard any triangle whose longest edge far exceeds the patch's typical edge
+            // length, so the surface follows the points instead of bridging holes (an alpha-shape filter).
+            var longest = new float[m];
+            var edges = new List<float>(m * 3);
+            for (int j = 0; j < m; j++)
+            {
+                float2 a = p2[tri[3 * j]], b = p2[tri[3 * j + 1]], cc = p2[tri[3 * j + 2]];
+                float e0 = math.distance(a, b), e1 = math.distance(b, cc), e2 = math.distance(cc, a);
+                longest[j] = math.max(e0, math.max(e1, e2));
+                edges.Add(e0); edges.Add(e1); edges.Add(e2);
+            }
+            edges.Sort();
+            float thresh = 2.5f * edges[edges.Count / 2]; // 2.5 x the patch's median edge length
+
+            for (int j = 0; j < m; j++)
+                if (longest[j] <= thresh)
+                    outTris.Add(new int3(global[tri[3 * j]], global[tri[3 * j + 1]], global[tri[3 * j + 2]]));
         }
 
         /// <summary>Remesh with the original homework method (covariance rows).</summary>

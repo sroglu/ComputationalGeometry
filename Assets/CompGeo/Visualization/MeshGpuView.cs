@@ -169,13 +169,15 @@ namespace CompGeo.Visualization
             }
 
             float len = NormalLengthScale * _bounds.size.magnitude;
+            Vector3 centre = _bounds.center;
             var verts = new Vector3[vc * 2];
             var cols = new Color[vc * 2];
             var idx = new int[vc * 2];
             for (int i = 0; i < vc; i++)
             {
                 Vector3 p = (Vector3)(float3)mesh.Positions[i];
-                Vector3 n = nrm[i].sqrMagnitude > 1e-12f ? nrm[i].normalized : Vector3.up;
+                Vector3 n = nrm[i].sqrMagnitude > 1e-12f ? nrm[i].normalized : (p - centre).normalized;
+                if (Vector3.Dot(n, p - centre) < 0f) n = -n; // orient outward so the spikes read consistently
                 verts[2 * i] = p;
                 verts[2 * i + 1] = p + n * len;
                 cols[2 * i] = NormalColor;
