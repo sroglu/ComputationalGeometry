@@ -112,6 +112,54 @@ namespace CompGeo.Collections
         }
 
         /// <summary>
+        /// Fill <paramref name="outIndices"/> with the original indices of the up-to-k nearest points to
+        /// <paramref name="query"/>, sorted ascending by distance (k = <c>outIndices.Length</c>); returns
+        /// how many were written. <paramref name="outDistSq"/> (same length) receives their squared
+        /// distances and doubles as the working buffer. Allocation-free. This is the k-NN query the
+        /// point-cloud remesh uses to gather each vertex's neighbourhood.
+        /// </summary>
+        public int KNearest(float3 query, NativeArray<int> outIndices, NativeArray<float> outDistSq)
+        {
+            int k = outIndices.Length;
+            int count = 0;
+            if (_root != None && k > 0)
+                KNearestSearch(_root, query, outIndices, outDistSq, ref count, k);
+            return count;
+        }
+
+        void KNearestSearch(int node, float3 q, NativeArray<int> oi, NativeArray<float> od, ref int count, int k)
+        {
+            while (node != None)
+            {
+                ConsiderNeighbour(node, q, oi, od, ref count, k);
+
+                int axis = _axis[node];
+                float diff = q[axis] - _pos[node][axis];
+                int near = diff < 0f ? _left[node] : _right[node];
+                int far = diff < 0f ? _right[node] : _left[node];
+
+                KNearestSearch(near, q, oi, od, ref count, k);
+
+                float worst = count < k ? float.PositiveInfinity : od[k - 1];
+                if (diff * diff < worst) node = far; // the far side may still hold a closer-than-worst point
+                else return;
+            }
+        }
+
+        void ConsiderNeighbour(int node, float3 q, NativeArray<int> oi, NativeArray<float> od, ref int count, int k)
+        {
+            float d2 = math.distancesq(q, _pos[node]);
+            if (count == k && d2 >= od[k - 1]) return;
+
+            int hi = count < k ? count - 1 : k - 2; // last slot to shift
+            int i = hi;
+            while (i >= 0 && od[i] > d2) { od[i + 1] = od[i]; oi[i + 1] = oi[i]; i--; }
+            od[i + 1] = d2;
+            oi[i + 1] = _index[node];
+            if (count < k) count++;
+        }
+
+        /// <summary>
         /// Index of the point closest to the ray <c>origin + t·direction, t ≥ 0</c> (by perpendicular
         /// distance), within <paramref name="maxDistance"/>, or -1 if none. <paramref name="direction"/>
         /// must be normalized. Used for click-picking: build a screen ray, get the vertex under it.
