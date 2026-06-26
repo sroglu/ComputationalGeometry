@@ -138,11 +138,11 @@ namespace CompGeo.MeshProcessing
         }
 
         /// <summary>
-        /// Triangulate one neighbourhood: project onto its covariance plane, then — before ear-clipping —
-        /// order the points by angle about the centroid so they form a simple (star-shaped) polygon. The
-        /// raw k-NN distance order self-intersects, which is what made the surface a tangle of slivers;
-        /// the angular order turns each patch into a clean fan that tiles with its neighbours.
-        /// <paramref name="global"/> maps local point index → global vertex index (length = group size).
+        /// Triangulate one neighbourhood: project onto its covariance plane, then 2D-Delaunay the projected
+        /// points. Delaunay treats the k-NN as a point set (not a polygon), giving a well-shaped, sliver-free
+        /// local mesh that tiles cleanly with its neighbours — the polygon ear-clip instead spanned the
+        /// neighbourhood with long crossing triangles. <paramref name="global"/> maps local point index →
+        /// global vertex index (length = group size).
         /// </summary>
         static void TriangulatePatch(List<float3> groupPts, int[] global, PlaneMethod method, List<int3> outTris)
         {
@@ -152,21 +152,15 @@ namespace CompGeo.MeshProcessing
             Covariance.Plane(groupPts, method, out float3 dim1, out float3 dim2, out _, out float3 center);
 
             var p2 = new float2[got];
-            var order = new int[got];
             for (int i = 0; i < got; i++)
             {
                 float3 rel = groupPts[i] - center;
                 p2[i] = new float2(math.dot(dim1, rel), math.dot(dim2, rel));
-                order[i] = i;
             }
-            System.Array.Sort(order, (a, b) => math.atan2(p2[a].y, p2[a].x).CompareTo(math.atan2(p2[b].y, p2[b].x)));
 
-            var poly = new List<float2>(got);
-            for (int i = 0; i < got; i++) poly.Add(p2[order[i]]);
-
-            int[] tri = EarClippingTriangulator.Triangulate(poly);
+            int[] tri = DelaunayTriangulator.Triangulate(p2);
             for (int t = 0; t < tri.Length; t += 3)
-                outTris.Add(new int3(global[order[tri[t]]], global[order[tri[t + 1]]], global[order[tri[t + 2]]]));
+                outTris.Add(new int3(global[tri[t]], global[tri[t + 1]], global[tri[t + 2]]));
         }
 
         /// <summary>Remesh with the original homework method (covariance rows).</summary>
