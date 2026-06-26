@@ -29,9 +29,10 @@ namespace CompGeo.Samples
             _cam = FindFirstObjectByType<WorkbenchCamera>();
             _geo = FindFirstObjectByType<GeodesicsMode>();
 
-            // Model Features.
+            // Model Features (each bound only if that toggle is present in the scene's panel).
             BindToggle("VertexToggle", _wb.showVertices, _wb.SetShowVertices);
             BindToggle("EdgeToggle", _wb.showEdges, _wb.SetShowEdges);
+            BindToggle("SurfaceToggle", _wb.showSurface, _wb.SetShowSurface);
             BindToggle("NormalsToggle", _wb.showNormals, _wb.SetShowNormals);
 
             // Mesh Operations.
