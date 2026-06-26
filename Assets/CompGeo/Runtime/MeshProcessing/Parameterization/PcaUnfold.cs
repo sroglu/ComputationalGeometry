@@ -16,16 +16,16 @@ namespace CompGeo.MeshProcessing
     public static class PcaUnfold
     {
         /// <summary>
-        /// Project all <paramref name="positions"/> onto the global covariance plane, writing the 2D result
-        /// into <paramref name="outUv"/> (must be the same length as <paramref name="positions"/>).
+        /// Project all <paramref name="positions"/> onto the global plane (chosen by <paramref name="method"/>),
+        /// writing the 2D result into <paramref name="outUv"/> (same length as <paramref name="positions"/>).
         /// </summary>
-        public static void Compute(NativeArray<float3> positions, NativeArray<float2> outUv)
+        public static void Compute(NativeArray<float3> positions, NativeArray<float2> outUv, PlaneMethod method = PlaneMethod.CovarianceRows)
         {
             int n = positions.Length;
             var pts = new List<float3>(n);
             for (int i = 0; i < n; i++) pts.Add(positions[i]);
 
-            Covariance.PlaneFromRows(pts, out float3 dim1, out float3 dim2, out _, out float3 center);
+            Covariance.Plane(pts, method, out float3 dim1, out float3 dim2, out _, out float3 center);
 
             for (int i = 0; i < n; i++)
             {

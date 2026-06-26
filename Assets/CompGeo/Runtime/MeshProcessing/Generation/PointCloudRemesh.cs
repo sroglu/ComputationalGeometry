@@ -27,9 +27,10 @@ namespace CompGeo.MeshProcessing
 
         /// <summary>
         /// Remesh <paramref name="positions"/> into a new <see cref="MeshData"/> (positions copied,
-        /// triangles regenerated). The caller owns and must dispose the result.
+        /// triangles regenerated) using the given local-plane <paramref name="method"/>. The caller owns
+        /// and must dispose the result.
         /// </summary>
-        public static MeshData Remesh(NativeArray<float3> positions, int k, Allocator allocator)
+        public static MeshData Remesh(NativeArray<float3> positions, int k, PlaneMethod method, Allocator allocator)
         {
             int n = positions.Length;
             var posList = new List<float3>(n);
@@ -59,7 +60,7 @@ namespace CompGeo.MeshProcessing
                     }
                     if (got < 3) continue;
 
-                    Covariance.PlaneFromRows(groupPts, out float3 dim1, out float3 dim2, out _, out float3 center);
+                    Covariance.Plane(groupPts, method, out float3 dim1, out float3 dim2, out _, out float3 center);
 
                     pts2d.Clear();
                     for (int i = 0; i < got; i++)
@@ -80,8 +81,12 @@ namespace CompGeo.MeshProcessing
             return MeshBuilder.Build(posList, triangles, allocator);
         }
 
-        /// <summary>Remesh with the original neighbourhood size (k = 8).</summary>
+        /// <summary>Remesh with the original homework method (covariance rows).</summary>
+        public static MeshData Remesh(NativeArray<float3> positions, int k, Allocator allocator)
+            => Remesh(positions, k, PlaneMethod.CovarianceRows, allocator);
+
+        /// <summary>Remesh with the original neighbourhood size (k = 8) and method.</summary>
         public static MeshData Remesh(NativeArray<float3> positions, Allocator allocator)
-            => Remesh(positions, DefaultK, allocator);
+            => Remesh(positions, DefaultK, PlaneMethod.CovarianceRows, allocator);
     }
 }

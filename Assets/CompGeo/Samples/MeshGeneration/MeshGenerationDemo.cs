@@ -23,11 +23,18 @@ namespace CompGeo.Samples
         [Tooltip("Neighbourhood size for the remesh (original homework used 8).")]
         [Range(3, 32)] public int k = PointCloudRemesh.DefaultK;
 
+        [Tooltip("Local-plane method: the homework's covariance rows, or true eigenvectors (PCA).")]
+        public PlaneMethod method = PlaneMethod.CovarianceRows;
+
+        enum Mode { Points, Remesh, Unfold }
+        Mode _mode = Mode.Points;
+
         MeshData _source;
         MeshData _generated;
         bool _hasSource, _hasGenerated, _built;
         MeshGpuView _view;
         string _status = "";
+        static readonly string[] MethodLabels = { "Homework (cov-rows)", "Eigenvectors (PCA)" };
 
         void Start()
         {
@@ -52,6 +59,7 @@ namespace CompGeo.Samples
             _view.ShowEdges = false;
             _view.ShowSurface = false;
             _built = true;
+            _mode = Mode.Points;
             _status = $"{catalog.NameAt(selectedMeshIndex)}: {_source.VertexCount} points";
         }
 
@@ -59,14 +67,15 @@ namespace CompGeo.Samples
         {
             if (!_hasSource) return;
             FreeGenerated();
-            _generated = PointCloudRemesh.Remesh(_source.Positions, k, Allocator.Persistent);
+            _generated = PointCloudRemesh.Remesh(_source.Positions, k, method, Allocator.Persistent);
             _hasGenerated = true;
             _view.Build(_generated);
             _view.ShowPoints = false;
             _view.ShowEdges = true;
             _view.ShowSurface = true;
             _built = true;
-            _status = $"remesh (k={k}): {_generated.TriangleCount} triangles";
+            _mode = Mode.Remesh;
+            _status = $"remesh (k={k}, {MethodLabels[(int)method]}): {_generated.TriangleCount} triangles";
         }
 
         void PcaUnfoldMesh()
@@ -75,7 +84,7 @@ namespace CompGeo.Samples
             FreeGenerated();
 
             using var uv = new NativeArray<float2>(_source.VertexCount, Allocator.Persistent);
-            PcaUnfold.Compute(_source.Positions, uv);
+            PcaUnfold.Compute(_source.Positions, uv, method);
 
             var flat = new List<float3>(_source.VertexCount);
             for (int i = 0; i < uv.Length; i++) flat.Add(new float3(uv[i].x, 0f, uv[i].y));
@@ -89,7 +98,19 @@ namespace CompGeo.Samples
             _view.ShowEdges = true;
             _view.ShowSurface = true;
             _built = true;
-            _status = "PCA unfold (global covariance plane)";
+            _mode = Mode.Unfold;
+            _status = $"PCA unfold ({MethodLabels[(int)method]})";
+        }
+
+        // Re-run whichever result is showing, after the method dropdown changes.
+        void Reapply()
+        {
+            switch (_mode)
+            {
+                case Mode.Remesh: Remesh(); break;
+                case Mode.Unfold: PcaUnfoldMesh(); break;
+                default: ShowPointCloud(); break;
+            }
         }
 
         void LateUpdate()
@@ -100,10 +121,15 @@ namespace CompGeo.Samples
         void OnGUI()
         {
             const int w = 210;
-            GUILayout.BeginArea(new Rect(8, 8, w, 230), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(8, 8, w, 320), GUI.skin.box);
             GUILayout.Label("<b>Mesh Generation</b> (eigenvector / covariance-row port)");
             GUILayout.Label(_status);
 
+            GUILayout.Label("Plane method:");
+            int sel = GUILayout.SelectionGrid((int)method, MethodLabels, 1);
+            if (sel != (int)method) { method = (PlaneMethod)sel; Reapply(); }
+
+            GUILayout.Space(4);
             if (GUILayout.Button("Point cloud")) ShowPointCloud();
             if (GUILayout.Button($"Remesh (k = {k})")) Remesh();
             if (GUILayout.Button("PCA Unfold")) PcaUnfoldMesh();
