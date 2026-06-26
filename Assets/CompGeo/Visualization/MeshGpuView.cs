@@ -56,6 +56,10 @@ namespace CompGeo.Visualization
         /// <summary>Colour of the vertex spheres.</summary>
         public Color PointColor = new Color(0f, 0.85f, 1f, 1f); // cyan
 
+        /// <summary>Uniform wireframe colour. Edges keep this colour and are <b>not</b> recoloured by the
+        /// heatmap (so the wireframe reads as a clean cyan mesh, like the original "Show Edges").</summary>
+        public Color EdgeColor = new Color(0f, 0.85f, 1f, 1f); // cyan
+
         /// <summary>Vertex sphere radius as a fraction of the mesh's bounding size.</summary>
         public float PointRadiusScale = 0.008f;
 
@@ -112,7 +116,10 @@ namespace CompGeo.Visualization
 
             _edgesMesh = NewMesh("CompGeo Edges");
             _edgesMesh.SetVertices(vertices);
-            _edgesMesh.SetColors(colors);
+            var edgeColors = new NativeArray<Color>(_vertexCount, Allocator.Temp);
+            for (int i = 0; i < _vertexCount; i++) edgeColors[i] = EdgeColor;
+            _edgesMesh.SetColors(edgeColors);
+            edgeColors.Dispose();
             _edgesMesh.SetIndices(edgeIndices.ToArray(), MeshTopology.Lines, 0);
             _edgesMesh.RecalculateBounds();
 
@@ -214,11 +221,13 @@ namespace CompGeo.Visualization
             colors.Dispose();
         }
 
-        /// <summary>Set per-vertex colours directly (length must equal the vertex count).</summary>
+        /// <summary>
+        /// Set per-vertex colours for the point and surface layers (e.g. the geodesic heatmap). The
+        /// wireframe keeps its uniform <see cref="EdgeColor"/> so it stays a clean cyan mesh.
+        /// </summary>
         public void SetColors(NativeArray<Color> colors)
         {
             _pointsMesh.SetColors(colors);
-            _edgesMesh.SetColors(colors);
             _surfaceMesh.SetColors(colors);
         }
 

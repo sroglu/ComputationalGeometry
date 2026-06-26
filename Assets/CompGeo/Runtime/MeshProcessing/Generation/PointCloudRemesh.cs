@@ -46,7 +46,6 @@ namespace CompGeo.MeshProcessing
                 var nbrDst = new NativeArray<float>(k, Allocator.Persistent);
                 var processed = new bool[n];
                 var groupPts = new List<float3>(k);
-                var pts2d = new List<float2>(k);
 
                 for (int seed = 0; seed < n; seed++)
                 {
@@ -54,25 +53,15 @@ namespace CompGeo.MeshProcessing
 
                     int got = tree.KNearest(positions[seed], nbrIdx, nbrDst);
                     groupPts.Clear();
+                    var members = new int[got];
                     for (int i = 0; i < got; i++)
                     {
+                        members[i] = nbrIdx[i];
                         groupPts.Add(positions[nbrIdx[i]]);
                         processed[nbrIdx[i]] = true;
                     }
-                    if (got < 3) continue;
 
-                    Covariance.Plane(groupPts, method, out float3 dim1, out float3 dim2, out _, out float3 center);
-
-                    pts2d.Clear();
-                    for (int i = 0; i < got; i++)
-                    {
-                        float3 rel = groupPts[i] - center;
-                        pts2d.Add(new float2(math.dot(dim1, rel), math.dot(dim2, rel)));
-                    }
-
-                    int[] tri = EarClippingTriangulator.Triangulate(pts2d);
-                    for (int t = 0; t < tri.Length; t += 3)
-                        triangles.Add(new int3(nbrIdx[tri[t]], nbrIdx[tri[t + 1]], nbrIdx[tri[t + 2]]));
+                    TriangulatePatch(groupPts, members, method, triangles);
                 }
 
                 nbrIdx.Dispose();
@@ -137,19 +126,8 @@ namespace CompGeo.MeshProcessing
                     var gp = new List<float3>(members.Length);
                     for (int i = 0; i < members.Length; i++) gp.Add(pos[members[i]]);
 
-                    Covariance.Plane(gp, method, out float3 dim1, out float3 dim2, out _, out float3 center);
-
-                    var p2 = new List<float2>(members.Length);
-                    for (int i = 0; i < gp.Count; i++)
-                    {
-                        float3 rel = gp[i] - center;
-                        p2.Add(new float2(math.dot(dim1, rel), math.dot(dim2, rel)));
-                    }
-
-                    int[] tri = EarClippingTriangulator.Triangulate(p2);
-                    var list = new List<int3>(tri.Length / 3);
-                    for (int t = 0; t < tri.Length; t += 3)
-                        list.Add(new int3(members[tri[t]], members[tri[t + 1]], members[tri[t + 2]]));
+                    var list = new List<int3>();
+                    TriangulatePatch(gp, members, method, list);
                     perGroup[gi] = list;
                 });
 
@@ -157,6 +135,38 @@ namespace CompGeo.MeshProcessing
             }
 
             return MeshBuilder.Build(posList, triangles, allocator);
+        }
+
+        /// <summary>
+        /// Triangulate one neighbourhood: project onto its covariance plane, then — before ear-clipping —
+        /// order the points by angle about the centroid so they form a simple (star-shaped) polygon. The
+        /// raw k-NN distance order self-intersects, which is what made the surface a tangle of slivers;
+        /// the angular order turns each patch into a clean fan that tiles with its neighbours.
+        /// <paramref name="global"/> maps local point index → global vertex index (length = group size).
+        /// </summary>
+        static void TriangulatePatch(List<float3> groupPts, int[] global, PlaneMethod method, List<int3> outTris)
+        {
+            int got = groupPts.Count;
+            if (got < 3) return;
+
+            Covariance.Plane(groupPts, method, out float3 dim1, out float3 dim2, out _, out float3 center);
+
+            var p2 = new float2[got];
+            var order = new int[got];
+            for (int i = 0; i < got; i++)
+            {
+                float3 rel = groupPts[i] - center;
+                p2[i] = new float2(math.dot(dim1, rel), math.dot(dim2, rel));
+                order[i] = i;
+            }
+            System.Array.Sort(order, (a, b) => math.atan2(p2[a].y, p2[a].x).CompareTo(math.atan2(p2[b].y, p2[b].x)));
+
+            var poly = new List<float2>(got);
+            for (int i = 0; i < got; i++) poly.Add(p2[order[i]]);
+
+            int[] tri = EarClippingTriangulator.Triangulate(poly);
+            for (int t = 0; t < tri.Length; t += 3)
+                outTris.Add(new int3(global[order[tri[t]]], global[order[tri[t + 1]]], global[order[tri[t + 2]]]));
         }
 
         /// <summary>Remesh with the original homework method (covariance rows).</summary>
