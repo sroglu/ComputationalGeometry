@@ -50,7 +50,9 @@ namespace CompGeo.Samples
                 return MeshFactory.BuildProceduralDisk(allocator);
 
             string path = Path.Combine(Application.streamingAssetsPath, e.streamingPath);
-            MeshData mesh = OffReader.ReadFile(path, allocator);
+            MeshData mesh = path.EndsWith(".obj", StringComparison.OrdinalIgnoreCase)
+                ? ObjReader.ReadFile(path, allocator)
+                : OffReader.ReadFile(path, allocator);
             MeshFactory.NormalizeAndOrient(ref mesh);
             return mesh;
         }
@@ -62,6 +64,7 @@ namespace CompGeo.Samples
             new Entry { name = "Face (low)",  streamingPath = "meshes1/faces/face-low.off" },
             new Entry { name = "man0",        streamingPath = "meshes1/geodesics/man0.off" },
             new Entry { name = "horse0",      streamingPath = "meshes1/geodesics/horse0.off" },
+            new Entry { name = "Dragon",      streamingPath = "meshes1/timing/dragon.obj" },
             new Entry { name = "Procedural disk", streamingPath = "" },
         };
     }
