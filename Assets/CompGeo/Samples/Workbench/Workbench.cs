@@ -51,6 +51,9 @@ namespace CompGeo.Samples
         /// <summary>Raised after a new mesh is loaded (modes reset their per-mesh state here).</summary>
         public event Action MeshChanged;
 
+        /// <summary>Raised after a timed operation (Remesh / Unfold) with a short status + elapsed time.</summary>
+        public event Action<string> Status;
+
         MeshData _mesh;
         MeshGpuView _view;
         MeshPicker _picker;
@@ -78,13 +81,16 @@ namespace CompGeo.Samples
         public void Remesh()
         {
             if (!_loaded) return;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             MeshData newMesh = PointCloudRemesh.Remesh(_mesh.Positions, remeshK, remeshMode, Allocator.Persistent);
+            sw.Stop();
             _view.Dispose();
             _picker.Dispose();
             _mesh.Dispose();
             _mesh = newMesh;
             BuildViewAndPicker();
             MeshChanged?.Invoke();
+            Status?.Invoke($"Remesh [{remeshMode}]: {sw.Elapsed.TotalMilliseconds:F1} ms  ({_mesh.TriangleCount} tris)");
         }
 
         /// <summary>
@@ -97,6 +103,7 @@ namespace CompGeo.Samples
             if (!_loaded) return;
             int n = _mesh.VertexCount;
             var uv = new NativeArray<float2>(n, Allocator.Persistent);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 if (unfoldMethod == UnfoldMethod.Tutte)
@@ -113,9 +120,11 @@ namespace CompGeo.Samples
             catch (ArgumentException e)
             {
                 Debug.LogWarning($"Unfold skipped: {e.Message}"); // Tutte on a closed mesh has no boundary
+                Status?.Invoke($"Unfold skipped: {e.Message}");
                 uv.Dispose();
                 return;
             }
+            sw.Stop();
 
             // Centre + scale the flat result to ~2 units so the camera frames it like the 3D mesh.
             float2 mn = uv[0], mx = uv[0];
@@ -137,6 +146,7 @@ namespace CompGeo.Samples
             _mesh = newMesh;
             BuildViewAndPicker();
             MeshChanged?.Invoke();
+            Status?.Invoke($"Unfold [{unfoldMethod}]: {sw.Elapsed.TotalMilliseconds:F1} ms");
         }
 
         void BuildViewAndPicker()

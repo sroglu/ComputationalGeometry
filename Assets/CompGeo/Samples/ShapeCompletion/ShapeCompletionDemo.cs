@@ -28,6 +28,10 @@ namespace CompGeo.Samples
         public Color lineColor = new Color(0.1f, 0.9f, 1f, 1f);
         public float lineWidth = 0.06f;
 
+        /// <summary>Raised after Complete/Reset with a short status line (the UI shows it).</summary>
+        public event System.Action<string> StatusChanged;
+        public int ExtraPoints => extraPoints;
+
         LineRenderer _line;
         readonly List<Vector2> _current = new List<Vector2>();
         bool _completed;
@@ -52,6 +56,7 @@ namespace CompGeo.Samples
             _current.Clear();
             _current.AddRange(openPoints);
             Redraw(false);
+            StatusChanged?.Invoke($"{_current.Count} open points");
         }
 
         /// <summary>Close the current open chain with a synthesised arc, then join back to the start.</summary>
@@ -67,7 +72,11 @@ namespace CompGeo.Samples
 
             _completed = true;
             Redraw(true);
+            StatusChanged?.Invoke($"{_current.Count} points, closed (+{extraPoints})");
         }
+
+        /// <summary>Bound to the UI slider: set how many points the closing arc synthesises.</summary>
+        public void SetExtraPoints(float v) => extraPoints = Mathf.Clamp(Mathf.RoundToInt(v), 1, 64);
 
         void Redraw(bool closed)
         {
@@ -75,22 +84,6 @@ namespace CompGeo.Samples
             _line.positionCount = _current.Count;
             for (int i = 0; i < _current.Count; i++)
                 _line.SetPosition(i, new Vector3(_current[i].x, _current[i].y, 0f));
-        }
-
-        void OnGUI()
-        {
-            const int w = 150, h = 36;
-            GUI.Box(new Rect(8, 8, w, _completed ? 88 : 92), "Shape Completion");
-            if (!_completed)
-            {
-                if (GUI.Button(new Rect(16, 34, w - 16, h), $"Complete (+{extraPoints})")) Complete();
-                GUI.Label(new Rect(16, 74, w - 16, 20), $"{_current.Count} open points");
-            }
-            else
-            {
-                if (GUI.Button(new Rect(16, 34, w - 16, h), "Reset")) ResetShape();
-                GUI.Label(new Rect(16, 74, w - 16, 20), $"{_current.Count} points, closed");
-            }
         }
     }
 }

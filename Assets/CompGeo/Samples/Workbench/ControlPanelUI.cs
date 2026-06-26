@@ -109,6 +109,14 @@ namespace CompGeo.Samples
             }
 
             if (_cam != null) Bind("ResetCamButton", _cam.ResetView);
+
+            // Stopwatch readout: Remesh / Unfold report through Workbench.Status.
+            Text timing = Find<Text>("TimingLabel");
+            if (timing != null)
+            {
+                timing.text = "";
+                _wb.Status += s => timing.text = s;
+            }
         }
 
         void RefreshReadout()
@@ -117,8 +125,8 @@ namespace CompGeo.Samples
             if (_dest != null) _dest.SetTextWithoutNotify(_geo.Target.ToString(CultureInfo.InvariantCulture));
             if (_status != null)
                 _status.text = _geo.Target < 0
-                    ? $"source {_geo.Source}\npick a destination"
-                    : $"{_geo.Source} → {_geo.Target}\ndistance: {_geo.LastCost:F3}";
+                    ? $"source {_geo.Source}\npick a destination  ({_geo.LastSearchMs:F1} ms)"
+                    : $"{_geo.Source} → {_geo.Target}\ndistance: {_geo.LastCost:F3}  ({_geo.LastSearchMs:F1} ms)";
         }
 
         void Bind(string name, UnityEngine.Events.UnityAction action)

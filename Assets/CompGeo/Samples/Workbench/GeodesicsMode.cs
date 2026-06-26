@@ -32,6 +32,9 @@ namespace CompGeo.Samples
 
         /// <summary>Geodesic cost of the current source→target pair, or -1 when no target is set.</summary>
         public float LastCost { get; private set; } = -1f;
+
+        /// <summary>Elapsed time (ms) of the last geodesic compute, for the UI's stopwatch readout.</summary>
+        public double LastSearchMs { get; private set; }
         public int Source => _source;
         public int Target => _target;
 
@@ -161,7 +164,10 @@ namespace CompGeo.Samples
 
         void Recompute()
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             DijkstraGeodesics.Compute(_wb.Mesh, _source, _dist, _pred);
+            sw.Stop();
+            LastSearchMs = sw.Elapsed.TotalMilliseconds;
             _wb.View.SetHeatmap(_dist, unreachableColor);
         }
 
