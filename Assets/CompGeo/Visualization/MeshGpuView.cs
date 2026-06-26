@@ -26,6 +26,7 @@ namespace CompGeo.Visualization
         Mesh _pointsMesh;
         Mesh _edgesMesh;
         Mesh _surfaceMesh;
+        Mesh _normalsMesh;
         Mesh _pathMesh;
         Bounds _bounds;
         int _vertexCount;
@@ -42,6 +43,15 @@ namespace CompGeo.Visualization
 
         /// <summary>Draw the wireframe edges (default true). Turn off for a clean surface-only view.</summary>
         public bool ShowEdges = true;
+
+        /// <summary>Draw per-vertex normal spikes (the original "Show Normals" view). Off by default.</summary>
+        public bool ShowNormals;
+
+        /// <summary>Colour of the normal spikes.</summary>
+        public Color NormalColor = new Color(0.95f, 0.25f, 0.4f, 1f); // red/pink, like the original
+
+        /// <summary>Normal-spike length as a fraction of the mesh's bounding size.</summary>
+        public float NormalLengthScale = 0.03f;
 
         /// <summary>Colour of the vertex spheres.</summary>
         public Color PointColor = new Color(0f, 0.85f, 1f, 1f); // cyan
@@ -124,10 +134,54 @@ namespace CompGeo.Visualization
             _bounds = _pointsMesh.bounds;
             colors.Dispose();
 
+            BuildNormalsMesh(mesh);
+
             // Vertex spheres: cache positions + size for instanced drawing.
             _pointPositions = vertices.ToArray();
             _pointRadius = PointRadiusScale * _bounds.size.magnitude;
             _pointMaterial.SetColor("_BaseColor", PointColor);
+        }
+
+        /// <summary>
+        /// Build the red normal-spike line mesh: one line per vertex from its position along its
+        /// area-weighted vertex normal (the original homework's "Show Normals" view). Drawn only when
+        /// <see cref="ShowNormals"/>.
+        /// </summary>
+        void BuildNormalsMesh(in MeshData mesh)
+        {
+            int vc = mesh.VertexCount;
+            var nrm = new Vector3[vc];
+            for (int t = 0; t < mesh.TriangleCount; t++)
+            {
+                int3 tri = mesh.Triangles[t];
+                Vector3 p0 = (Vector3)(float3)mesh.Positions[tri.x];
+                Vector3 p1 = (Vector3)(float3)mesh.Positions[tri.y];
+                Vector3 p2 = (Vector3)(float3)mesh.Positions[tri.z];
+                Vector3 fn = Vector3.Cross(p1 - p0, p2 - p0); // area-weighted (not normalized)
+                nrm[tri.x] += fn; nrm[tri.y] += fn; nrm[tri.z] += fn;
+            }
+
+            float len = NormalLengthScale * _bounds.size.magnitude;
+            var verts = new Vector3[vc * 2];
+            var cols = new Color[vc * 2];
+            var idx = new int[vc * 2];
+            for (int i = 0; i < vc; i++)
+            {
+                Vector3 p = (Vector3)(float3)mesh.Positions[i];
+                Vector3 n = nrm[i].sqrMagnitude > 1e-12f ? nrm[i].normalized : Vector3.up;
+                verts[2 * i] = p;
+                verts[2 * i + 1] = p + n * len;
+                cols[2 * i] = NormalColor;
+                cols[2 * i + 1] = NormalColor;
+                idx[2 * i] = 2 * i;
+                idx[2 * i + 1] = 2 * i + 1;
+            }
+
+            _normalsMesh = NewMesh("CompGeo Normals");
+            _normalsMesh.SetVertices(verts);
+            _normalsMesh.SetColors(cols);
+            _normalsMesh.SetIndices(idx, MeshTopology.Lines, 0);
+            _normalsMesh.RecalculateBounds();
         }
 
         /// <summary>
@@ -261,6 +315,7 @@ namespace CompGeo.Visualization
             }
             if (ShowPoints) DrawPointSpheres(objectToWorld);
             if (ShowEdges && _edgesMesh != null) Graphics.RenderMesh(rp, _edgesMesh, 0, objectToWorld);
+            if (ShowNormals && _normalsMesh != null) Graphics.RenderMesh(rp, _normalsMesh, 0, objectToWorld);
             if (_pathMesh != null) Graphics.RenderMesh(rp, _pathMesh, 0, objectToWorld);
         }
 
@@ -331,10 +386,11 @@ namespace CompGeo.Visualization
             DestroyObject(_pointsMesh);
             DestroyObject(_edgesMesh);
             DestroyObject(_surfaceMesh);
+            DestroyObject(_normalsMesh);
             DestroyObject(_pathMesh);
             DestroyObject(_material);
             DestroyObject(_pointMaterial);
-            _pointsMesh = _edgesMesh = _surfaceMesh = _pathMesh = null;
+            _pointsMesh = _edgesMesh = _surfaceMesh = _normalsMesh = _pathMesh = null;
         }
 
         static void DestroyObject(UnityEngine.Object o)

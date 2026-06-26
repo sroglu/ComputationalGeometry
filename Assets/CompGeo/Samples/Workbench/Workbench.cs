@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using UnityEngine;
 using CompGeo.Core;
+using CompGeo.MeshProcessing;
 using CompGeo.Visualization;
 
 namespace CompGeo.Samples
@@ -23,6 +24,10 @@ namespace CompGeo.Samples
         public bool showVertices = false;
         public bool showEdges = false;
         public bool showSurface = true;
+        public bool showNormals = false;
+
+        [Header("Mesh generation")]
+        [Range(3, 32)] public int remeshK = 8;
 
         public MeshData Mesh => _mesh;
         public MeshGpuView View => _view;
@@ -48,17 +53,45 @@ namespace CompGeo.Samples
 
             selectedMeshIndex = index;
             _mesh = catalog.Build(index, Allocator.Persistent);
-            _view = new MeshGpuView { ShowPoints = showVertices, ShowEdges = showEdges, ShowSurface = showSurface };
+            BuildViewAndPicker();
+
+            MeshChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Regenerate the surface from the current point cloud (the original homework's "Remesh" — KD-tree
+        /// k-NN grouping + covariance-row local planes + ear-clipping) and rebuild the view/picker.
+        /// </summary>
+        public void Remesh()
+        {
+            if (!_loaded) return;
+            MeshData newMesh = PointCloudRemesh.RemeshParallel(_mesh.Positions, remeshK, PlaneMethod.CovarianceRows, Allocator.Persistent);
+            _view.Dispose();
+            _picker.Dispose();
+            _mesh.Dispose();
+            _mesh = newMesh;
+            BuildViewAndPicker();
+            MeshChanged?.Invoke();
+        }
+
+        void BuildViewAndPicker()
+        {
+            _view = new MeshGpuView
+            {
+                ShowPoints = showVertices,
+                ShowEdges = showEdges,
+                ShowSurface = showSurface,
+                ShowNormals = showNormals,
+            };
             _view.Build(_mesh);
             _picker = new MeshPicker(_mesh);
             _loaded = true;
-
-            MeshChanged?.Invoke();
         }
 
         public void SetShowVertices(bool v) { showVertices = v; if (_loaded) _view.ShowPoints = v; }
         public void SetShowEdges(bool v) { showEdges = v; if (_loaded) _view.ShowEdges = v; }
         public void SetShowSurface(bool v) { showSurface = v; if (_loaded) _view.ShowSurface = v; }
+        public void SetShowNormals(bool v) { showNormals = v; if (_loaded) _view.ShowNormals = v; }
 
         void LateUpdate()
         {
