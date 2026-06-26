@@ -49,6 +49,9 @@ namespace CompGeo.Visualization
         /// <summary>Vertex sphere radius as a fraction of the mesh's bounding size.</summary>
         public float PointRadiusScale = 0.008f;
 
+        /// <summary>Path tube radius as a fraction of the mesh's bounding size (live: re-call SetPath to apply).</summary>
+        public float PathRadiusScale = 0.006f;
+
         static Mesh s_sphere;
         readonly Material _pointMaterial;
         Vector3[] _pointPositions;
@@ -175,27 +178,64 @@ namespace CompGeo.Visualization
         /// <summary>Set the surface mesh's UV0 channel (length must equal the vertex count).</summary>
         public void SetSurfaceUVs(NativeArray<float2> uv) => _surfaceMesh.SetUVs(0, uv.Reinterpret<Vector2>());
 
-        /// <summary>Build/replace the highlighted path from a vertex sequence (e.g. a reconstructed shortest path).</summary>
+        /// <summary>
+        /// Build/replace the highlighted path from a vertex sequence as a thick coloured <b>tube</b> (a
+        /// 1px line is nearly invisible). The tube pokes out of the surface so it reads clearly over the
+        /// heatmap.
+        /// </summary>
         public void SetPath(in MeshData mesh, NativeArray<int> path, Color color)
         {
             if (_pathMesh == null) _pathMesh = NewMesh("CompGeo Path");
+            _pathMesh.Clear();
 
             int n = path.Length;
-            var verts = new Vector3[n];
-            var cols = new Color[n];
+            if (n < 2) return;
+
+            var center = new Vector3[n];
+            for (int i = 0; i < n; i++) center[i] = (Vector3)(float3)mesh.Positions[path[i]];
+
+            const int sides = 6;
+            float radius = Mathf.Max(1e-5f, PathRadiusScale * _bounds.size.magnitude);
+            var verts = new Vector3[n * sides];
+            var cols = new Color[n * sides];
+
+            Vector3 u = Vector3.zero;
             for (int i = 0; i < n; i++)
             {
-                verts[i] = (Vector3)(float3)mesh.Positions[path[i]];
-                cols[i] = color;
+                Vector3 tangent = center[Mathf.Min(i + 1, n - 1)] - center[Mathf.Max(i - 1, 0)];
+                if (tangent.sqrMagnitude < 1e-12f) tangent = Vector3.forward;
+                tangent.Normalize();
+
+                if (i == 0)
+                    u = Vector3.Cross(tangent, Mathf.Abs(tangent.y) < 0.9f ? Vector3.up : Vector3.right);
+                else
+                    u -= tangent * Vector3.Dot(u, tangent); // parallel-transport to avoid twist
+                if (u.sqrMagnitude < 1e-12f) u = Vector3.Cross(tangent, Vector3.right);
+                u.Normalize();
+                Vector3 v = Vector3.Cross(tangent, u);
+
+                for (int k = 0; k < sides; k++)
+                {
+                    float a = 2f * Mathf.PI * k / sides;
+                    verts[i * sides + k] = center[i] + (Mathf.Cos(a) * u + Mathf.Sin(a) * v) * radius;
+                    cols[i * sides + k] = color;
+                }
             }
 
-            var lines = new int[n > 1 ? (n - 1) * 2 : 0];
-            for (int i = 0; i < n - 1; i++) { lines[i * 2] = i; lines[i * 2 + 1] = i + 1; }
+            var tris = new int[(n - 1) * sides * 6];
+            int ti = 0;
+            for (int i = 0; i < n - 1; i++)
+            for (int k = 0; k < sides; k++)
+            {
+                int k2 = (k + 1) % sides;
+                int a = i * sides + k, b = i * sides + k2, c = (i + 1) * sides + k, d = (i + 1) * sides + k2;
+                tris[ti++] = a; tris[ti++] = c; tris[ti++] = b;
+                tris[ti++] = b; tris[ti++] = c; tris[ti++] = d;
+            }
 
-            _pathMesh.Clear();
             _pathMesh.SetVertices(verts);
             _pathMesh.SetColors(cols);
-            _pathMesh.SetIndices(lines, MeshTopology.Lines, 0);
+            _pathMesh.SetTriangles(tris, 0);
             _pathMesh.RecalculateBounds();
         }
 

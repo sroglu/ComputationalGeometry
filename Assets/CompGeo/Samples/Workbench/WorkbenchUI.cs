@@ -27,10 +27,13 @@ namespace CompGeo.Samples
 
             // Shared top bar.
             Dropdown meshDropdown = Find<Dropdown>("MeshDropdown");
-            meshDropdown.ClearOptions();
-            meshDropdown.AddOptions(new List<string>(_wb.Catalog.Names()));
-            meshDropdown.SetValueWithoutNotify(_wb.SelectedIndex);
-            meshDropdown.onValueChanged.AddListener(i => _wb.LoadMesh(i));
+            if (meshDropdown != null)
+            {
+                meshDropdown.ClearOptions();
+                meshDropdown.AddOptions(new List<string>(_wb.Catalog.Names()));
+                meshDropdown.SetValueWithoutNotify(_wb.SelectedIndex);
+                meshDropdown.onValueChanged.AddListener(i => _wb.LoadMesh(i));
+            }
 
             Button load = Find<Button>("LoadButton");
             if (load != null) load.onClick.AddListener(() => _wb.LoadMesh(meshDropdown.value));
@@ -52,6 +55,28 @@ namespace CompGeo.Samples
                     algo.AddOptions(new List<string> { "Dijkstra", "A*" });
                     algo.SetValueWithoutNotify((int)_geodesics.algorithm);
                     algo.onValueChanged.AddListener(_geodesics.SetAlgorithm);
+                }
+
+                Slider widthSlider = Find<Slider>("PathWidthSlider");
+                if (widthSlider != null)
+                {
+                    widthSlider.minValue = 0.0008f;
+                    widthSlider.maxValue = 0.012f;
+                    widthSlider.SetValueWithoutNotify(_geodesics.pathWidth);
+                    widthSlider.onValueChanged.AddListener(_geodesics.SetPathWidth);
+                }
+
+                Text distanceLabel = Find<Text>("DistanceLabel");
+                if (distanceLabel != null)
+                {
+                    void RefreshDistance()
+                    {
+                        distanceLabel.text = _geodesics.Target < 0
+                            ? $"source: {_geodesics.Source}\nright-click a target"
+                            : $"{_geodesics.Source} → {_geodesics.Target}\ndistance: {_geodesics.LastCost:F3}";
+                    }
+                    _geodesics.PathUpdated += RefreshDistance;
+                    RefreshDistance();
                 }
             }
 

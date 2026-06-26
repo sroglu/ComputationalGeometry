@@ -4,60 +4,98 @@ using UnityEngine.EventSystems;
 namespace CompGeo.Samples
 {
     /// <summary>
-    /// Mouse camera control for the sample workbench (replaces the original UI.cs "MouseControlZone"):
-    /// <b>left-drag</b> orbits around the pivot, <b>right-drag</b> pans, the <b>scroll wheel</b> dollies,
-    /// and <see cref="ResetView"/> restores the start pose. Input is ignored while the pointer is over a
-    /// UI element so dragging on the panel never moves the camera. Uses the legacy Input Manager for now.
+    /// Model-inspector camera: the <b>object spins in place around fixed WORLD axes</b> (left-drag →
+    /// horizontal = world Y, vertical = world X), so the rotation is the same no matter how the model is
+    /// already turned — never local. The camera itself keeps a fixed viewing direction; the <b>scroll
+    /// wheel</b> dollies and <b>right/middle-drag</b> pans. Input is ignored over UI.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public sealed class WorkbenchCamera : MonoBehaviour
     {
-        public Vector3 pivot = Vector3.zero;
-        public float orbitSpeed = 5f;
-        public float panSpeed = 0.4f;
-        public float zoomSpeed = 0.5f;
+        [Tooltip("Transform spun by the mouse (defaults to the Workbench). Rotated around WORLD axes.")]
+        public Transform objectTransform;
+        public Vector3 target = Vector3.zero;
 
-        Vector3 _initialPos;
-        Quaternion _initialRot;
-        Vector3 _pivot;
+        [Header("Sensitivity (tune live in Play)")]
+        public float orbitSensitivity = 0.3f;   // degrees per pixel
+        public float zoomSensitivity = 3f;       // distance per scroll notch
+        public float panSensitivity = 0.0015f;   // world per pixel, per unit distance
+
+        [Header("Limits")]
+        public float minDistance = 0.6f;
+        public float maxDistance = 20f;
+
+        Vector3 _viewDir;
+        float _distance;
+        Vector3 _target;
+        Vector3 _lastMouse;
+        Quaternion _objRot0;
+        Vector3 _target0;
+        float _distance0;
 
         void Start()
         {
-            _initialPos = transform.position;
-            _initialRot = transform.rotation;
-            _pivot = pivot;
+            if (objectTransform == null)
+            {
+                var wb = FindFirstObjectByType<Workbench>();
+                if (wb != null) objectTransform = wb.transform;
+            }
+
+            _target = target;
+            Vector3 toTarget = _target - transform.position;
+            _distance = Mathf.Clamp(toTarget.magnitude, minDistance, maxDistance);
+            _viewDir = toTarget.sqrMagnitude > 1e-6f ? toTarget.normalized : Vector3.forward;
+            _lastMouse = Input.mousePosition;
+
+            _objRot0 = objectTransform != null ? objectTransform.rotation : Quaternion.identity;
+            _target0 = _target;
+            _distance0 = _distance;
+            ApplyCamera();
         }
 
-        void Update()
+        void LateUpdate()
         {
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
-                return;
+            Vector3 mouse = Input.mousePosition;
+            Vector3 delta = mouse - _lastMouse;
+            _lastMouse = mouse;
 
-            float mx = Input.GetAxis("Mouse X");
-            float my = Input.GetAxis("Mouse Y");
-
-            if (Input.GetMouseButton(0)) // orbit
+            if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
             {
-                transform.RotateAround(_pivot, Vector3.up, mx * orbitSpeed);
-                transform.RotateAround(_pivot, transform.right, -my * orbitSpeed);
-            }
-            else if (Input.GetMouseButton(1)) // pan (move camera and pivot together)
-            {
-                Vector3 delta = (-mx * transform.right - my * transform.up) * panSpeed;
-                transform.position += delta;
-                _pivot += delta;
+                if (Input.GetMouseButton(0) && objectTransform != null)
+                {
+                    // Arcball / trackball: rotate the object around the CAMERA's screen axes — horizontal
+                    // drag spins it around the screen-vertical (camera up), vertical drag around the
+                    // screen-horizontal (camera right). Pre-multiplying applies it in world space, so it
+                    // feels like grabbing the object and turning it, intuitively, from any angle.
+                    Quaternion rot = Quaternion.AngleAxis(-delta.x * orbitSensitivity, transform.up)
+                                   * Quaternion.AngleAxis(delta.y * orbitSensitivity, transform.right);
+                    objectTransform.rotation = rot * objectTransform.rotation;
+                }
+                else if (Input.GetMouseButton(1) || Input.GetMouseButton(2))
+                {
+                    _target -= (transform.right * delta.x + transform.up * delta.y) * (panSensitivity * _distance);
+                }
+
+                float scroll = Input.GetAxis("Mouse ScrollWheel");
+                if (scroll != 0f)
+                    _distance = Mathf.Clamp(_distance - scroll * zoomSensitivity, minDistance, maxDistance);
             }
 
-            float scroll = Input.mouseScrollDelta.y;
-            if (scroll != 0f)
-                transform.position += transform.forward * (scroll * zoomSpeed);
+            ApplyCamera();
+        }
+
+        void ApplyCamera()
+        {
+            transform.rotation = Quaternion.LookRotation(_viewDir, Vector3.up);
+            transform.position = _target - _viewDir * _distance;
         }
 
         public void ResetView()
         {
-            transform.position = _initialPos;
-            transform.rotation = _initialRot;
-            _pivot = pivot;
+            if (objectTransform != null) objectTransform.rotation = _objRot0;
+            _target = _target0;
+            _distance = _distance0;
+            ApplyCamera();
         }
     }
 }

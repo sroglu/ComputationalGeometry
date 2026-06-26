@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -23,9 +24,19 @@ namespace CompGeo.Samples
         public Algorithm algorithm = Algorithm.Dijkstra;
         public float pickRadius = 0.12f;
         public Color unreachableColor = new Color(0.15f, 0.15f, 0.15f, 1f);
-        public Color pathColor = Color.white;
+        public Color pathColor = new Color(1f, 0f, 1f, 1f); // magenta — stands out over the heatmap
+        [Tooltip("Path tube radius (fraction of mesh size). Min ≈ thin line, max ≈ thick tube.")]
+        [Range(0.0008f, 0.012f)] public float pathWidth = 0.005f;
         [Tooltip("Max pointer travel (pixels) still treated as a click rather than a camera drag.")]
         public float clickThreshold = 6f;
+
+        /// <summary>Geodesic cost of the current source→target pair, or -1 when no target is set.</summary>
+        public float LastCost { get; private set; } = -1f;
+        public int Source => _source;
+        public int Target => _target;
+
+        /// <summary>Raised whenever the source/target/distance changes (the UI reads it off this).</summary>
+        public event Action PathUpdated;
 
         Workbench _wb;
         NativeArray<float> _dist;
@@ -47,9 +58,17 @@ namespace CompGeo.Samples
             _dist = new NativeArray<float>(n, Allocator.Persistent);
             _pred = new NativeArray<int>(n, Allocator.Persistent);
             _alloc = true;
+            _wb.View.PathRadiusScale = pathWidth;
             _source = 0;
             _target = -1;
             Recompute();
+        }
+
+        /// <summary>Bound to the UI path-width slider; rebuilds the current path at the new thickness.</summary>
+        public void SetPathWidth(float width)
+        {
+            pathWidth = width;
+            if (_alloc) { _wb.View.PathRadiusScale = width; RefreshPath(); }
         }
 
         /// <summary>Bound to the UI algorithm dropdown (0 = Dijkstra, 1 = A*).</summary>
@@ -92,7 +111,7 @@ namespace CompGeo.Samples
             Ray world = cam.ScreenPointToRay(Input.mousePosition);
             Vector3 lo = transform.InverseTransformPoint(world.origin);
             Vector3 ld = transform.InverseTransformDirection(world.direction);
-            return _wb.Picker.Pick(new Ray(lo, ld), pickRadius, out vertex);
+            return _wb.Picker.PickSurface(new Ray(lo, ld), out vertex);
         }
 
         void Recompute()
@@ -103,16 +122,28 @@ namespace CompGeo.Samples
 
         void RefreshPath()
         {
-            if (_target < 0) return;
+            if (_target < 0)
+            {
+                LastCost = -1f;
+                PathUpdated?.Invoke();
+                return;
+            }
 
             NativeList<int> path;
+            float cost;
             if (algorithm == Algorithm.AStar)
-                AStarGeodesics.FindPath(_wb.Mesh, _source, _target, Allocator.Temp, out path);
+                cost = AStarGeodesics.FindPath(_wb.Mesh, _source, _target, Allocator.Temp, out path);
             else
+            {
                 path = DijkstraGeodesics.ReconstructPath(_pred, _source, _target, Allocator.Temp);
+                cost = _dist[_target];
+            }
 
             if (path.Length > 0) _wb.View.SetPath(_wb.Mesh, path.AsArray(), pathColor);
             path.Dispose();
+
+            LastCost = cost;
+            PathUpdated?.Invoke();
         }
 
         void Free()

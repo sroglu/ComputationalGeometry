@@ -1293,9 +1293,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.LayoutElement
   m_IgnoreLayout: 0
   m_MinWidth: -1
-  m_MinHeight: 18
+  m_MinHeight: 54
   m_PreferredWidth: -1
-  m_PreferredHeight: 18
+  m_PreferredHeight: 54
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
   m_LayoutPriority: 1
@@ -1329,10 +1329,12 @@ MonoBehaviour:
     m_Alignment: 3
     m_AlignByGeometry: 0
     m_RichText: 1
-    m_HorizontalOverflow: 0
-    m_VerticalOverflow: 0
+    m_HorizontalOverflow: 1
+    m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: L-drag orbit  R-drag pan  wheel zoom
+  m_Text: 'Controls
+
+    L-drag: orbit   R/M-drag: pan   wheel: zoom'
 --- !u!222 &645619058
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1796,10 +1798,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3ed5c66d700c44562ad117693652a7bd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: CompGeo.Samples::CompGeo.Samples.WorkbenchCamera
-  pivot: {x: 0, y: 0, z: 0}
-  orbitSpeed: 5
-  panSpeed: 0.4
-  zoomSpeed: 0.5
+  target: {x: 0, y: 0, z: 0}
+  orbitSensitivity: 0.12
+  zoomSensitivity: 3
+  panSensitivity: 0.0015
+  yMinLimit: -80
+  yMaxLimit: 80
+  distanceMin: 0.6
+  distanceMax: 20
 --- !u!81 &906508950
 AudioListener:
   m_ObjectHideFlags: 0

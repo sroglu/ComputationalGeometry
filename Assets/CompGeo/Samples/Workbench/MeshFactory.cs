@@ -41,17 +41,15 @@ namespace CompGeo.Samples
         }
 
         /// <summary>
-        /// Lay an arbitrary mesh down for viewing: rotate its dominant (area-weighted) face normal to +Y,
-        /// then centre on the origin and uniformly scale to fit ~2 units. Topology/indices untouched.
+        /// Orient a mesh upright for viewing, then centre on the origin and uniformly scale to fit ~2
+        /// units. Open relief surfaces (a face) are turned to face +Y by their dominant normal; closed
+        /// surfaces (man0, horse0) — whose normals cancel — are stood up by aligning their longest
+        /// bounding-box axis with +Y, so a world-Y turntable orbit reads naturally. Topology untouched.
         /// </summary>
         public static void NormalizeAndOrient(ref MeshData m)
         {
             int n = m.VertexCount;
 
-            // Dominant (area-weighted) normal vs total area. For an open relief surface (a face) the
-            // normals reinforce, so the sum is a large fraction of the area → reorient it to face +Y.
-            // For a closed surface (man0, horse0) the normals cancel (sum ≈ 0) → leave the orientation as
-            // authored rather than rotating by a meaningless near-zero vector.
             float3 nrmSum = float3.zero;
             float areaSum = 0f;
             for (int t = 0; t < m.TriangleCount; t++)
@@ -61,11 +59,22 @@ namespace CompGeo.Samples
                 nrmSum += c;
                 areaSum += math.length(c);
             }
+
+            float3 bMin = m.Positions[0], bMax = m.Positions[0];
+            for (int i = 1; i < n; i++) { bMin = math.min(bMin, m.Positions[i]); bMax = math.max(bMax, m.Positions[i]); }
+            float3 ext = bMax - bMin;
+
+            Quaternion q;
             if (areaSum > 1e-9f && math.length(nrmSum) / areaSum > 0.5f)
+                q = Quaternion.FromToRotation((Vector3)math.normalize(nrmSum), Vector3.up); // open: face +Y
+            else
             {
-                Quaternion q = Quaternion.FromToRotation((Vector3)math.normalize(nrmSum), Vector3.up);
-                for (int i = 0; i < n; i++) m.Positions[i] = (float3)(q * (Vector3)(float3)m.Positions[i]);
+                // Closed mesh: stand its longest axis up (man0 is authored lying along Z).
+                Vector3 longAxis = ext.x >= ext.y && ext.x >= ext.z ? Vector3.right
+                                 : ext.y >= ext.z ? Vector3.up : Vector3.forward;
+                q = Quaternion.FromToRotation(longAxis, Vector3.up);
             }
+            for (int i = 0; i < n; i++) m.Positions[i] = (float3)(q * (Vector3)(float3)m.Positions[i]);
 
             float3 mn = m.Positions[0], mx = m.Positions[0];
             for (int i = 1; i < n; i++) { mn = math.min(mn, m.Positions[i]); mx = math.max(mx, m.Positions[i]); }
