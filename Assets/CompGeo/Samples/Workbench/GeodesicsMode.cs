@@ -46,6 +46,7 @@ namespace CompGeo.Samples
         int _target = -1;
         Vector3 _downPos;
         int _downButton = -1;
+        int _armed; // 0 = none, 1 = next click sets source, 2 = next click sets target (the "Pick" buttons)
 
         void Awake() => _wb = GetComponent<Workbench>();
         void OnEnable() => _wb.MeshChanged += OnMeshChanged;
@@ -78,6 +79,48 @@ namespace CompGeo.Samples
             RefreshPath();
         }
 
+        /// <summary>Set the source vertex and recompute its distance field + path (bound to the Source field).</summary>
+        public void SetSource(int v)
+        {
+            if (!_alloc) return;
+            _source = Mathf.Clamp(v, 0, _wb.Mesh.VertexCount - 1);
+            Recompute();
+            RefreshPath();
+        }
+
+        /// <summary>Set the target vertex and redraw the path (bound to the Dest field).</summary>
+        public void SetTarget(int v)
+        {
+            if (!_alloc) return;
+            _target = Mathf.Clamp(v, 0, _wb.Mesh.VertexCount - 1);
+            RefreshPath();
+        }
+
+        /// <summary>Arm the next mesh click to set the source vertex (the "Pick" button next to Source).</summary>
+        public void ArmPickSource() => _armed = 1;
+
+        /// <summary>Arm the next mesh click to set the target vertex (the "Pick" button next to Dest).</summary>
+        public void ArmPickDest() => _armed = 2;
+
+        /// <summary>Recompute the path for the current source/target (the "Search" button).</summary>
+        public void Search()
+        {
+            if (!_alloc) return;
+            Recompute();
+            RefreshPath();
+        }
+
+        /// <summary>Pick a random source/target pair and search (the "Find Random Points" path).</summary>
+        public void SearchRandom()
+        {
+            if (!_alloc) return;
+            int n = _wb.Mesh.VertexCount;
+            _source = UnityEngine.Random.Range(0, n);
+            _target = UnityEngine.Random.Range(0, n);
+            Recompute();
+            RefreshPath();
+        }
+
         void Update()
         {
             if (!_alloc) return;
@@ -95,8 +138,10 @@ namespace CompGeo.Samples
                 bool isClick = (Input.mousePosition - _downPos).sqrMagnitude <= clickThreshold * clickThreshold;
                 if (isClick && !overUi && TryPick(out int v))
                 {
-                    if (button == 0) { _source = v; Recompute(); RefreshPath(); }
-                    else { _target = v; RefreshPath(); }
+                    if (_armed == 1) { _armed = 0; SetSource(v); }
+                    else if (_armed == 2) { _armed = 0; SetTarget(v); }
+                    else if (button == 0) SetSource(v);
+                    else SetTarget(v);
                 }
             }
         }
