@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
 using UnityEngine.UI;
+using CompGeo.Core;
 
 namespace CompGeo.Samples
 {
@@ -44,6 +45,15 @@ namespace CompGeo.Samples
             }
             Bind("LoadButton", () => { if (mesh != null) _wb.LoadMesh(mesh.value); });
             Bind("RemeshButton", _wb.Remesh);
+
+            Dropdown pmethod = Find<Dropdown>("MethodDropdown");
+            if (pmethod != null)
+            {
+                pmethod.ClearOptions();
+                pmethod.AddOptions(new List<string> { "Homework (cov-rows)", "Eigenvectors (PCA)" });
+                pmethod.SetValueWithoutNotify((int)_wb.remeshMethod);
+                pmethod.onValueChanged.AddListener(i => _wb.remeshMethod = (PlaneMethod)i);
+            }
 
             // Search Shortest Path.
             if (_geo != null)

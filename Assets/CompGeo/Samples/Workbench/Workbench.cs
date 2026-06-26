@@ -28,6 +28,8 @@ namespace CompGeo.Samples
 
         [Header("Mesh generation")]
         [Range(3, 32)] public int remeshK = 8;
+        [Tooltip("Local-plane method for Remesh: the homework's covariance rows, or true eigenvectors (PCA).")]
+        public PlaneMethod remeshMethod = PlaneMethod.CovarianceRows;
 
         public MeshData Mesh => _mesh;
         public MeshGpuView View => _view;
@@ -65,7 +67,7 @@ namespace CompGeo.Samples
         public void Remesh()
         {
             if (!_loaded) return;
-            MeshData newMesh = PointCloudRemesh.RemeshParallel(_mesh.Positions, remeshK, PlaneMethod.CovarianceRows, Allocator.Persistent);
+            MeshData newMesh = PointCloudRemesh.RemeshParallel(_mesh.Positions, remeshK, remeshMethod, Allocator.Persistent);
             _view.Dispose();
             _picker.Dispose();
             _mesh.Dispose();

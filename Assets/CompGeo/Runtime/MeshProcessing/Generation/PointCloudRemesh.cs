@@ -8,84 +8,41 @@ using CompGeo.Collections;
 namespace CompGeo.MeshProcessing
 {
     /// <summary>
-    /// Rebuilds surface connectivity from a raw point set — a faithful port of the original CENG789
-    /// homework's <c>Model.RemeshModel</c> (the "Mesh Generation" part). The algorithm, unchanged:
-    /// <list type="number">
-    /// <item>Build a k-d tree over all points.</item>
-    /// <item>Greedily partition the points into neighbourhoods: repeatedly take the first unprocessed
-    /// point, gather its <c>k</c> nearest neighbours (k = 8 originally), and mark them processed.</item>
-    /// <item>For each neighbourhood, derive a local plane from the covariance rows
-    /// (<see cref="Covariance.PlaneFromRows"/> — the homework's heuristic, not a true eigen-frame),
-    /// project the points onto it, ear-clip the 2D polygon, and lift the triangles back to global
-    /// vertex indices.</item>
-    /// </list>
-    /// Neighbourhoods overlap (each is the k-NN over <i>all</i> points, processed only gates seeding), so
-    /// the result is the same union of local triangulations the original produced.
+    /// Rebuilds surface connectivity from a raw point set (the CENG789 "Mesh Generation" part). The
+    /// original homework unioned an independent triangulation of every point's k-NN neighbourhood, which
+    /// is a non-manifold <i>triangle soup</i>: overlapping patches never share edges, so dense meshes
+    /// render as a tangle. This keeps the same per-neighbourhood primitives — k-d tree k-NN, covariance
+    /// local plane, 2D triangulation — but reconstructs a coherent surface by <b>mutual agreement</b>:
+    /// for every vertex it builds the Delaunay "umbrella" of its neighbourhood and keeps only the
+    /// triangles that <b>two or more</b> of their vertices' umbrellas independently produced. Spurious
+    /// bridging triangles (seen by a single umbrella) drop out, leaving a near-manifold mesh.
     /// </summary>
     public static class PointCloudRemesh
     {
         public const int DefaultK = 8;
 
-        /// <summary>
-        /// Remesh <paramref name="positions"/> into a new <see cref="MeshData"/> (positions copied,
-        /// triangles regenerated) using the given local-plane <paramref name="method"/>. The caller owns
-        /// and must dispose the result.
-        /// </summary>
+        const int Bits = 21;                 // vertex indices must fit in 21 bits (≤ ~2.1M vertices)
+        const long Mask = (1L << Bits) - 1;
+
         public static MeshData Remesh(NativeArray<float3> positions, int k, PlaneMethod method, Allocator allocator)
-        {
-            int n = positions.Length;
-            var posList = new List<float3>(n);
-            for (int i = 0; i < n; i++) posList.Add(positions[i]);
-
-            var triangles = new List<int3>();
-            if (n >= 3)
-            {
-                k = math.clamp(k, 3, n);
-                using var tree = KdTree3.Build(positions, Allocator.Persistent);
-                var nbrIdx = new NativeArray<int>(k, Allocator.Persistent);
-                var nbrDst = new NativeArray<float>(k, Allocator.Persistent);
-                var processed = new bool[n];
-                var groupPts = new List<float3>(k);
-
-                for (int seed = 0; seed < n; seed++)
-                {
-                    if (processed[seed]) continue;
-
-                    int got = tree.KNearest(positions[seed], nbrIdx, nbrDst);
-                    groupPts.Clear();
-                    var members = new int[got];
-                    for (int i = 0; i < got; i++)
-                    {
-                        members[i] = nbrIdx[i];
-                        groupPts.Add(positions[nbrIdx[i]]);
-                        processed[nbrIdx[i]] = true;
-                    }
-
-                    TriangulatePatch(groupPts, members, method, triangles);
-                }
-
-                nbrIdx.Dispose();
-                nbrDst.Dispose();
-            }
-
-            return MeshBuilder.Build(posList, triangles, allocator);
-        }
+            => Build(positions, k, method, allocator, parallel: false);
 
         /// <summary>
-        /// Same algorithm and <b>bit-identical result</b> as <see cref="Remesh(NativeArray{float3},int,PlaneMethod,Allocator)"/>,
-        /// but parallelised: every vertex's k-NN is precomputed in one Burst-parallel pass
-        /// (<see cref="KdTree3.KNearestAll"/>), the greedy grouping stays sequential (so the partition is
-        /// unchanged), and the independent per-group plane/project/ear-clip work runs across threads. The
-        /// triangle list is concatenated back in group order, so output equals the serial path exactly.
+        /// Same result as <see cref="Remesh(NativeArray{float3},int,PlaneMethod,Allocator)"/> — the
+        /// per-vertex umbrellas are independent, so they run across threads while the agreement count and
+        /// the final (sorted) triangle list stay deterministic.
         /// </summary>
         public static MeshData RemeshParallel(NativeArray<float3> positions, int k, PlaneMethod method, Allocator allocator)
+            => Build(positions, k, method, allocator, parallel: true);
+
+        static MeshData Build(NativeArray<float3> positions, int k, PlaneMethod method, Allocator allocator, bool parallel)
         {
             int n = positions.Length;
             var posList = new List<float3>(n);
             for (int i = 0; i < n; i++) posList.Add(positions[i]);
 
             var triangles = new List<int3>();
-            if (n >= 3)
+            if (n >= 3 && n <= Mask)
             {
                 k = math.clamp(k, 3, n);
                 using var tree = KdTree3.Build(positions, Allocator.Persistent);
@@ -94,7 +51,6 @@ namespace CompGeo.MeshProcessing
                 var knd = new NativeArray<float>(n * k, Allocator.Persistent);
                 tree.KNearestAll(positions, k, knn, knd);
 
-                // Managed copies so the parallel per-group work touches no NativeArray off the main thread.
                 var pos = new float3[n];
                 for (int i = 0; i < n; i++) pos[i] = positions[i];
                 var knnM = new int[n * k];
@@ -102,85 +58,98 @@ namespace CompGeo.MeshProcessing
                 knn.Dispose();
                 knd.Dispose();
 
-                // Sequential greedy grouping (identical seed order and partition to the serial path).
-                var processed = new bool[n];
-                var groups = new List<int[]>();
-                for (int seed = 0; seed < n; seed++)
+                // Each vertex's umbrella = the sorted-triple keys of the Delaunay triangles incident to it.
+                var perVertex = new List<long>[n];
+                if (parallel)
+                    Parallel.For(0, n, v => perVertex[v] = UmbrellaKeys(v, k, knnM, pos, method));
+                else
+                    for (int v = 0; v < n; v++) perVertex[v] = UmbrellaKeys(v, k, knnM, pos, method);
+
+                // Count how many umbrellas produced each triangle; keep the mutually-agreed ones.
+                var support = new Dictionary<long, int>(n * 4);
+                for (int v = 0; v < n; v++)
                 {
-                    if (processed[seed]) continue;
-                    var members = new int[k];
-                    for (int i = 0; i < k; i++)
+                    var keys = perVertex[v];
+                    for (int i = 0; i < keys.Count; i++)
                     {
-                        int idx = knnM[seed * k + i];
-                        members[i] = idx;
-                        processed[idx] = true;
+                        support.TryGetValue(keys[i], out int c);
+                        support[keys[i]] = c + 1;
                     }
-                    groups.Add(members);
                 }
 
-                int g = groups.Count;
-                var perGroup = new List<int3>[g];
-                Parallel.For(0, g, gi =>
-                {
-                    int[] members = groups[gi];
-                    var gp = new List<float3>(members.Length);
-                    for (int i = 0; i < members.Length; i++) gp.Add(pos[members[i]]);
+                var kept = new List<long>(support.Count);
+                foreach (var kv in support)
+                    if (kv.Value >= 2) kept.Add(kv.Key);
+                kept.Sort(); // deterministic triangle order, independent of threading / dictionary order
 
-                    var list = new List<int3>();
-                    TriangulatePatch(gp, members, method, list);
-                    perGroup[gi] = list;
-                });
-
-                for (int gi = 0; gi < g; gi++) triangles.AddRange(perGroup[gi]);
+                for (int i = 0; i < kept.Count; i++) triangles.Add(Decode(kept[i]));
             }
 
             return MeshBuilder.Build(posList, triangles, allocator);
         }
 
         /// <summary>
-        /// Triangulate one neighbourhood: project onto its covariance plane, then 2D-Delaunay the projected
-        /// points. Delaunay treats the k-NN as a point set (not a polygon), giving a well-shaped, sliver-free
-        /// local mesh that tiles cleanly with its neighbours — the polygon ear-clip instead spanned the
-        /// neighbourhood with long crossing triangles. <paramref name="global"/> maps local point index →
-        /// global vertex index (length = group size).
+        /// Build vertex <paramref name="v"/>'s umbrella: project its k-NN onto their covariance plane,
+        /// 2D-Delaunay them, and return the sorted global-index keys of the triangles incident to v
+        /// (dropping any triangle whose longest edge far exceeds the patch's median edge — a bridge).
         /// </summary>
-        static void TriangulatePatch(List<float3> groupPts, int[] global, PlaneMethod method, List<int3> outTris)
+        static List<long> UmbrellaKeys(int v, int k, int[] knnM, float3[] pos, PlaneMethod method)
         {
-            int got = groupPts.Count;
-            if (got < 3) return;
+            var members = new int[k];
+            var gp = new List<float3>(k);
+            for (int i = 0; i < k; i++) { members[i] = knnM[v * k + i]; gp.Add(pos[members[i]]); }
 
-            Covariance.Plane(groupPts, method, out float3 dim1, out float3 dim2, out _, out float3 center);
+            Covariance.Plane(gp, method, out float3 dim1, out float3 dim2, out _, out float3 center);
 
-            var p2 = new float2[got];
-            for (int i = 0; i < got; i++)
+            var p2 = new float2[k];
+            for (int i = 0; i < k; i++)
             {
-                float3 rel = groupPts[i] - center;
+                float3 rel = gp[i] - center;
                 p2[i] = new float2(math.dot(dim1, rel), math.dot(dim2, rel));
             }
 
             int[] tri = DelaunayTriangulator.Triangulate(p2);
-            int m = tri.Length / 3;
-            if (m == 0) return;
+            var keys = new List<long>(tri.Length / 3);
+            if (tri.Length == 0) return keys;
 
-            // A patch's Delaunay fills its convex hull, which can web across real gaps (between two
-            // limbs, say). Discard any triangle whose longest edge far exceeds the patch's typical edge
-            // length, so the surface follows the points instead of bridging holes (an alpha-shape filter).
-            var longest = new float[m];
-            var edges = new List<float>(m * 3);
-            for (int j = 0; j < m; j++)
+            // Median edge length of this patch, for the bridge filter.
+            var edges = new List<float>(tri.Length);
+            for (int t = 0; t < tri.Length; t += 3)
             {
-                float2 a = p2[tri[3 * j]], b = p2[tri[3 * j + 1]], cc = p2[tri[3 * j + 2]];
-                float e0 = math.distance(a, b), e1 = math.distance(b, cc), e2 = math.distance(cc, a);
-                longest[j] = math.max(e0, math.max(e1, e2));
-                edges.Add(e0); edges.Add(e1); edges.Add(e2);
+                edges.Add(math.distance(p2[tri[t]], p2[tri[t + 1]]));
+                edges.Add(math.distance(p2[tri[t + 1]], p2[tri[t + 2]]));
+                edges.Add(math.distance(p2[tri[t + 2]], p2[tri[t]]));
             }
             edges.Sort();
-            float thresh = 2.5f * edges[edges.Count / 2]; // 2.5 x the patch's median edge length
+            float thresh = 2.5f * edges[edges.Count / 2];
 
-            for (int j = 0; j < m; j++)
-                if (longest[j] <= thresh)
-                    outTris.Add(new int3(global[tri[3 * j]], global[tri[3 * j + 1]], global[tri[3 * j + 2]]));
+            for (int t = 0; t < tri.Length; t += 3)
+            {
+                int la = tri[t], lb = tri[t + 1], lc = tri[t + 2];
+                if (la != 0 && lb != 0 && lc != 0) continue; // v is local index 0 — keep only its triangles
+
+                float e0 = math.distance(p2[la], p2[lb]);
+                float e1 = math.distance(p2[lb], p2[lc]);
+                float e2 = math.distance(p2[lc], p2[la]);
+                if (math.max(e0, math.max(e1, e2)) > thresh) continue;
+
+                keys.Add(Encode(members[la], members[lb], members[lc]));
+            }
+            return keys;
         }
+
+        // Pack a triangle's three global indices (sorted ascending) into one long, so identical triangles
+        // from different umbrellas hash to the same key regardless of vertex order.
+        static long Encode(int a, int b, int c)
+        {
+            if (a > b) (a, b) = (b, a);
+            if (b > c) (b, c) = (c, b);
+            if (a > b) (a, b) = (b, a);
+            return ((long)a << (2 * Bits)) | ((long)b << Bits) | (long)c;
+        }
+
+        static int3 Decode(long key)
+            => new int3((int)(key >> (2 * Bits)), (int)((key >> Bits) & Mask), (int)(key & Mask));
 
         /// <summary>Remesh with the original homework method (covariance rows).</summary>
         public static MeshData Remesh(NativeArray<float3> positions, int k, Allocator allocator)
