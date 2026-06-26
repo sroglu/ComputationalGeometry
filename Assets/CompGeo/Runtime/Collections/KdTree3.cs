@@ -1,5 +1,7 @@
 using System;
+using Unity.Burst;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace CompGeo.Collections
@@ -253,6 +255,76 @@ namespace CompGeo.Collections
                 if (k <= j) hi = j;
                 else if (k >= i) lo = i;
                 else return;
+            }
+        }
+
+        /// <summary>
+        /// Batched, Burst-parallel k-NN: for every query in <paramref name="queries"/> writes its k nearest
+        /// original indices (k = <c>outIdx.Length / queries.Length</c>) into the matching slice of
+        /// <paramref name="outIdx"/>, sorted ascending by distance, with squared distances in
+        /// <paramref name="outDst"/>. Each query's result is identical to a single <see cref="KNearest"/>
+        /// call — this just runs them across worker threads. Used to precompute every vertex's
+        /// neighbourhood for the point-cloud remesh.
+        /// </summary>
+        public void KNearestAll(NativeArray<float3> queries, int k, NativeArray<int> outIdx, NativeArray<float> outDst)
+        {
+            if (_root == None || queries.Length == 0 || k <= 0) return;
+            new KnnAllJob
+            {
+                pos = _pos, index = _index, axis = _axis, left = _left, right = _right,
+                queries = queries, root = _root, k = k, outIdx = outIdx, outDst = outDst,
+            }.Schedule(queries.Length, 64).Complete();
+        }
+
+        [BurstCompile]
+        struct KnnAllJob : IJobParallelFor
+        {
+            [ReadOnly] public NativeArray<float3> pos;
+            [ReadOnly] public NativeArray<int> index;
+            [ReadOnly] public NativeArray<int> axis;
+            [ReadOnly] public NativeArray<int> left;
+            [ReadOnly] public NativeArray<int> right;
+            [ReadOnly] public NativeArray<float3> queries;
+            public int root;
+            public int k;
+            [NativeDisableParallelForRestriction] public NativeArray<int> outIdx;
+            [NativeDisableParallelForRestriction] public NativeArray<float> outDst;
+
+            public void Execute(int v)
+            {
+                int count = 0;
+                Search(root, queries[v], v * k, ref count);
+            }
+
+            void Search(int node, float3 q, int baseOff, ref int count)
+            {
+                while (node != None)
+                {
+                    float d2 = math.distancesq(q, pos[node]);
+                    if (!(count == k && d2 >= outDst[baseOff + k - 1]))
+                    {
+                        int i = count < k ? count - 1 : k - 2;
+                        while (i >= 0 && outDst[baseOff + i] > d2)
+                        {
+                            outDst[baseOff + i + 1] = outDst[baseOff + i];
+                            outIdx[baseOff + i + 1] = outIdx[baseOff + i];
+                            i--;
+                        }
+                        outDst[baseOff + i + 1] = d2;
+                        outIdx[baseOff + i + 1] = index[node];
+                        if (count < k) count++;
+                    }
+
+                    int ax = axis[node];
+                    float diff = q[ax] - pos[node][ax];
+                    int near = diff < 0f ? left[node] : right[node];
+                    int far = diff < 0f ? right[node] : left[node];
+
+                    Search(near, q, baseOff, ref count);
+                    float worst = count < k ? float.PositiveInfinity : outDst[baseOff + k - 1];
+                    if (diff * diff < worst) node = far;
+                    else return;
+                }
             }
         }
 

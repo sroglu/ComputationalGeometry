@@ -26,6 +26,9 @@ namespace CompGeo.Samples
         [Tooltip("Local-plane method: the homework's covariance rows, or true eigenvectors (PCA).")]
         public PlaneMethod method = PlaneMethod.CovarianceRows;
 
+        [Tooltip("Use the Burst-parallel remesh (identical result, ~3x faster on large meshes).")]
+        public bool parallel = true;
+
         enum Mode { Points, Remesh, Unfold }
         Mode _mode = Mode.Points;
 
@@ -67,7 +70,11 @@ namespace CompGeo.Samples
         {
             if (!_hasSource) return;
             FreeGenerated();
-            _generated = PointCloudRemesh.Remesh(_source.Positions, k, method, Allocator.Persistent);
+            float t0 = Time.realtimeSinceStartup;
+            _generated = parallel
+                ? PointCloudRemesh.RemeshParallel(_source.Positions, k, method, Allocator.Persistent)
+                : PointCloudRemesh.Remesh(_source.Positions, k, method, Allocator.Persistent);
+            float ms = (Time.realtimeSinceStartup - t0) * 1000f;
             _hasGenerated = true;
             _view.Build(_generated);
             _view.ShowPoints = false;
@@ -75,7 +82,7 @@ namespace CompGeo.Samples
             _view.ShowSurface = true;
             _built = true;
             _mode = Mode.Remesh;
-            _status = $"remesh (k={k}, {MethodLabels[(int)method]}): {_generated.TriangleCount} triangles";
+            _status = $"remesh (k={k}, {MethodLabels[(int)method]}, {(parallel ? "parallel" : "serial")}): {_generated.TriangleCount} tris, {ms:F0} ms";
         }
 
         void PcaUnfoldMesh()
@@ -128,6 +135,9 @@ namespace CompGeo.Samples
             GUILayout.Label("Plane method:");
             int sel = GUILayout.SelectionGrid((int)method, MethodLabels, 1);
             if (sel != (int)method) { method = (PlaneMethod)sel; Reapply(); }
+
+            bool par = GUILayout.Toggle(parallel, " Parallel (Burst)");
+            if (par != parallel) parallel = par;
 
             GUILayout.Space(4);
             if (GUILayout.Button("Point cloud")) ShowPointCloud();
