@@ -1301,10 +1301,10 @@ RectTransform:
   - {fileID: 639880790}
   m_Father: {fileID: 2106177950}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 160, y: 20}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &608245108
 MonoBehaviour:
@@ -3453,6 +3453,8 @@ MonoBehaviour:
       streamingPath: meshes1/geodesics/man0.off
     - name: horse0
       streamingPath: meshes1/geodesics/horse0.off
+    - name: Dragon
+      streamingPath: meshes1/timing/dragon.obj
     - name: Procedural disk
       streamingPath: 
   selectedMeshIndex: 3
@@ -4357,14 +4359,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3ed5c66d700c44562ad117693652a7bd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: CompGeo.Samples::CompGeo.Samples.WorkbenchCamera
+  objectTransform: {fileID: 0}
   target: {x: 0, y: 0, z: 0}
   orbitSensitivity: 0.12
   zoomSensitivity: 3
   panSensitivity: 0.0015
-  yMinLimit: -80
-  yMaxLimit: 80
-  distanceMin: 0.6
-  distanceMax: 20
+  minDistance: 0.6
+  maxDistance: 20
 --- !u!81 &1740487264
 AudioListener:
   m_ObjectHideFlags: 0
