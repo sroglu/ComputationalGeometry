@@ -1,12 +1,18 @@
 using System;
+using System.Collections.Generic;
 using Unity.Collections;
+using Unity.Mathematics;
 using UnityEngine;
 using CompGeo.Core;
 using CompGeo.MeshProcessing;
+using CompGeo.MeshProcessing.Parameterization;
 using CompGeo.Visualization;
 
 namespace CompGeo.Samples
 {
+    /// <summary>The two surface-flattening methods exposed by the Control Panel's Unfold dropdown.</summary>
+    public enum UnfoldMethod { Tutte, Pca }
+
     /// <summary>
     /// Hub for the interactive samples (the new-core stand-in for the original <c>ModelManager</c>): owns
     /// the active <see cref="MeshData"/> plus its <see cref="MeshGpuView"/> and <see cref="MeshPicker"/>,
@@ -30,6 +36,10 @@ namespace CompGeo.Samples
         [Range(3, 32)] public int remeshK = 8;
         [Tooltip("Local-plane method for Remesh: the homework's covariance rows, or true eigenvectors (PCA).")]
         public PlaneMethod remeshMethod = PlaneMethod.CovarianceRows;
+
+        [Header("Unfold")]
+        [Tooltip("Flatten method: Tutte (Laplacian solve, needs a boundary) or PCA (eigenvector plane).")]
+        public UnfoldMethod unfoldMethod = UnfoldMethod.Tutte;
 
         public MeshData Mesh => _mesh;
         public MeshGpuView View => _view;
@@ -68,6 +78,57 @@ namespace CompGeo.Samples
         {
             if (!_loaded) return;
             MeshData newMesh = PointCloudRemesh.RemeshParallel(_mesh.Positions, remeshK, remeshMethod, Allocator.Persistent);
+            _view.Dispose();
+            _picker.Dispose();
+            _mesh.Dispose();
+            _mesh = newMesh;
+            BuildViewAndPicker();
+            MeshChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Flatten the current mesh to its 2D parameterization and display it: <see cref="UnfoldMethod.Tutte"/>
+        /// (boundary pinned to a circle, interior solved via the Laplacian) or <see cref="UnfoldMethod.Pca"/>
+        /// (project onto the eigenvector plane). Tutte needs disk topology — on a closed mesh it does nothing.
+        /// </summary>
+        public void Unfold()
+        {
+            if (!_loaded) return;
+            int n = _mesh.VertexCount;
+            var uv = new NativeArray<float2>(n, Allocator.Persistent);
+            try
+            {
+                if (unfoldMethod == UnfoldMethod.Tutte)
+                {
+                    using var t = TutteEmbedding.Compute(_mesh, Allocator.Persistent);
+                    uv.CopyFrom(t);
+                }
+                else
+                {
+                    PcaUnfold.Compute(_mesh.Positions, uv, PlaneMethod.Eigenvectors);
+                }
+            }
+            catch (ArgumentException e)
+            {
+                Debug.LogWarning($"Unfold skipped: {e.Message}"); // Tutte on a closed mesh has no boundary
+                uv.Dispose();
+                return;
+            }
+
+            // Centre + scale the flat result to ~2 units so the camera frames it like the 3D mesh.
+            float2 mn = uv[0], mx = uv[0];
+            for (int i = 1; i < n; i++) { mn = math.min(mn, uv[i]); mx = math.max(mx, uv[i]); }
+            float2 c = (mn + mx) * 0.5f;
+            float ext = math.cmax(mx - mn);
+            float s = ext > 1e-9f ? 2f / ext : 1f;
+
+            var flat = new List<float3>(n);
+            for (int i = 0; i < n; i++) { float2 p = (uv[i] - c) * s; flat.Add(new float3(p.x, 0f, p.y)); }
+            var tris = new List<int3>(_mesh.TriangleCount);
+            for (int t = 0; t < _mesh.TriangleCount; t++) tris.Add(_mesh.Triangles[t]);
+            uv.Dispose();
+
+            MeshData newMesh = MeshBuilder.Build(flat, tris, Allocator.Persistent);
             _view.Dispose();
             _picker.Dispose();
             _mesh.Dispose();

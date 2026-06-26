@@ -55,6 +55,16 @@ namespace CompGeo.Samples
                 pmethod.onValueChanged.AddListener(i => _wb.remeshMethod = (PlaneMethod)i);
             }
 
+            Dropdown umethod = Find<Dropdown>("UnfoldMethodDropdown");
+            if (umethod != null)
+            {
+                umethod.ClearOptions();
+                umethod.AddOptions(new List<string> { "Tutte", "PCA (eigenvectors)" });
+                umethod.SetValueWithoutNotify((int)_wb.unfoldMethod);
+                umethod.onValueChanged.AddListener(i => _wb.unfoldMethod = (UnfoldMethod)i);
+            }
+            Bind("UnfoldButton", _wb.Unfold);
+
             // Search Shortest Path.
             if (_geo != null)
             {
